@@ -118,6 +118,46 @@ h2 {
     display: none !important;
 }
 
+.seed-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 18px;
+    padding-top: 15px;
+    border-top: 1px solid #e9ecef;
+}
+
+.seed-row label {
+    font-size: 0.82rem;
+    color: #888;
+    white-space: nowrap;
+}
+
+.seed-row input {
+    width: 120px;
+    padding: 5px 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: #888;
+}
+
+.seed-row input:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.15);
+    color: #333;
+}
+
+.stat-card.optimal {
+    background: #e8f5e9;
+    border-color: #66bb6a;
+}
+
+.stat-card.optimal .value {
+    color: #2e7d32;
+}
+
 .button-row {
     display: flex;
     gap: 12px;

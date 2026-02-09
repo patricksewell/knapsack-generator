@@ -155,12 +155,6 @@ function calculateStats(instance) {
         sumWeights,
         sumValues,
         capacityRatio: (instance.capacity / sumWeights * 100).toFixed(1),
-        minWeight: Math.min(...weights),
-        maxWeight: Math.max(...weights),
-        avgWeight: (sumWeights / weights.length).toFixed(1),
-        minValue: Math.min(...values),
-        maxValue: Math.max(...values),
-        avgValue: (sumValues / values.length).toFixed(1),
         warnings
     };
 }
@@ -193,6 +187,7 @@ const elements = {
     copyJsonBtn: document.getElementById('copy_json_btn'),
     outputSection: document.getElementById('output_section'),
     statsGrid: document.getElementById('stats_grid'),
+    optimalGrid: document.getElementById('optimal_grid'),
     previewBody: document.getElementById('preview_body'),
     weightParams: document.getElementById('weight_params'),
     valueParams: document.getElementById('value_params'),
@@ -276,20 +271,52 @@ function getConfig() {
     };
 }
 
+// Solve 0/1 knapsack with DP, return { value, items[] }
+function solveKnapsack(items, capacity) {
+    const n = items.length;
+    // dp[i][w] = best value using items 0..i-1 with capacity w
+    const dp = Array.from({ length: n + 1 }, () => new Int32Array(capacity + 1));
+    
+    for (let i = 1; i <= n; i++) {
+        const w = items[i - 1].weight;
+        const v = items[i - 1].value;
+        for (let c = 0; c <= capacity; c++) {
+            dp[i][c] = dp[i - 1][c];
+            if (w <= c && dp[i - 1][c - w] + v > dp[i][c]) {
+                dp[i][c] = dp[i - 1][c - w] + v;
+            }
+        }
+    }
+    
+    // Backtrack to find selected items
+    const selected = [];
+    let c = capacity;
+    for (let i = n; i >= 1; i--) {
+        if (dp[i][c] !== dp[i - 1][c]) {
+            selected.push(items[i - 1]);
+            c -= items[i - 1].weight;
+        }
+    }
+    selected.reverse();
+    
+    return {
+        value: dp[n][capacity],
+        weight: selected.reduce((s, it) => s + it.weight, 0),
+        count: selected.length,
+        items: selected
+    };
+}
+
 // Render statistics
 function renderStats(stats) {
     const statItems = [
         { label: 'Sum of Weights', value: stats.sumWeights },
         { label: 'Sum of Values', value: stats.sumValues },
-        { label: 'Capacity Ratio', value: `${stats.capacityRatio}%` },
-        { label: 'Weight Range', value: `${stats.minWeight} - ${stats.maxWeight}` },
-        { label: 'Avg Weight', value: stats.avgWeight },
-        { label: 'Value Range', value: `${stats.minValue} - ${stats.maxValue}` },
-        { label: 'Avg Value', value: stats.avgValue }
+        { label: 'Capacity Ratio', value: `${stats.capacityRatio}%`, title: 'Capacity as a percentage of total weight. Below 100% means not all items can fit.' }
     ];
     
     let html = statItems.map(stat => `
-        <div class="stat-card">
+        <div class="stat-card" ${stat.title ? `title="${stat.title}"` : ''}>
             <div class="label">${stat.label}</div>
             <div class="value">${stat.value}</div>
         </div>
@@ -306,6 +333,22 @@ function renderStats(stats) {
     }
     
     elements.statsGrid.innerHTML = html;
+}
+
+// Render optimal solution stats
+function renderOptimal(optimal) {
+    const statItems = [
+        { label: 'Items Selected', value: `${optimal.count}` },
+        { label: 'Total Weight', value: optimal.weight },
+        { label: 'Total Value', value: optimal.value }
+    ];
+    
+    elements.optimalGrid.innerHTML = statItems.map(stat => `
+        <div class="stat-card optimal">
+            <div class="label">${stat.label}</div>
+            <div class="value">${stat.value}</div>
+        </div>
+    `).join('');
 }
 
 // Render preview table
@@ -326,8 +369,10 @@ function generate() {
     const config = getConfig();
     currentInstance = generateInstance(config);
     const stats = calculateStats(currentInstance);
+    const optimal = solveKnapsack(currentInstance.items, currentInstance.capacity);
     
     renderStats(stats);
+    renderOptimal(optimal);
     renderPreview(currentInstance.items);
     
     elements.outputSection.classList.remove('hidden');
