@@ -110,11 +110,25 @@ function generateInstance(config) {
         items[i].value = Math.max(1, value);
     }
     
+    // Enforce non-trivial: capacity must be < sum of weights
+    const sumWeights = items.reduce((s, it) => s + it.weight, 0);
+    let capacity = config.capacity;
+    if (capacity >= sumWeights) {
+        capacity = sumWeights - 1;
+    }
+    if (capacity < 1) capacity = 1;
+    
+    // If a target optimal size is requested, binary-search the capacity
+    if (config.optimalSize !== 'random') {
+        const target = parseInt(config.optimalSize);
+        capacity = findCapacityForOptimalSize(items, target, sumWeights);
+    }
+    
     // Build output object with full metadata
     const result = {
         problem: '0/1 knapsack',
         n_items: config.nItems,
-        capacity: config.capacity,
+        capacity: capacity,
         seed: config.seed,
         weight_dist: {
             name: DIST_NAMES[config.weightDist],
@@ -135,6 +149,56 @@ function generateInstance(config) {
     return result;
 }
 
+// Binary-search capacity so the optimal solution has exactly 'target' items
+function findCapacityForOptimalSize(items, target, sumWeights) {
+    // Sort items by weight to get a reasonable starting range
+    const sorted = [...items].sort((a, b) => a.weight - b.weight);
+    
+    // Lower bound: sum of 'target' lightest items (minimum capacity that could fit target items)
+    let lo = 0;
+    for (let i = 0; i < Math.min(target, sorted.length); i++) lo += sorted[i].weight;
+    
+    let hi = sumWeights - 1;
+    let bestCap = lo;
+    
+    // Binary search: find the smallest capacity where optimal count >= target
+    while (lo <= hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        const sol = solveKnapsack(items, mid);
+        
+        if (sol.count >= target) {
+            bestCap = mid;
+            hi = mid - 1;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    
+    // Verify and fine-tune: walk down from bestCap to find exact boundary
+    // where count == target (not more, not fewer)
+    // First try bestCap
+    let sol = solveKnapsack(items, bestCap);
+    if (sol.count === target) return bestCap;
+    
+    // If count > target at bestCap, decrease until count == target
+    if (sol.count > target) {
+        for (let c = bestCap - 1; c >= 1; c--) {
+            sol = solveKnapsack(items, c);
+            if (sol.count === target) return c;
+            if (sol.count < target) break;
+        }
+    }
+    
+    // If we still haven't found exact match, search upward
+    for (let c = bestCap; c < sumWeights; c++) {
+        sol = solveKnapsack(items, c);
+        if (sol.count === target) return c;
+    }
+    
+    // Fallback: return bestCap (closest we could get)
+    return bestCap;
+}
+
 // Calculate statistics
 function calculateStats(instance) {
     const weights = instance.items.map(i => i.weight);
@@ -142,20 +206,11 @@ function calculateStats(instance) {
     const sumWeights = weights.reduce((a, b) => a + b, 0);
     const sumValues = values.reduce((a, b) => a + b, 0);
     
-    // Check for warnings
-    const warnings = [];
-    if (instance.capacity <= 0) {
-        warnings.push('Capacity is ≤ 0 (trivial/invalid problem)');
-    }
-    if (instance.capacity >= sumWeights) {
-        warnings.push('Capacity ≥ sum of weights (trivial problem: take all items)');
-    }
-    
     return {
         sumWeights,
         sumValues,
-        capacityRatio: (instance.capacity / sumWeights * 100).toFixed(1),
-        warnings
+        capacity: instance.capacity,
+        capacityRatio: (instance.capacity / sumWeights * 100).toFixed(1)
     };
 }
 
@@ -181,6 +236,7 @@ const elements = {
     valueSigma: document.getElementById('value_sigma'),
     alpha: document.getElementById('alpha'),
     noiseSd: document.getElementById('noise_sd'),
+    optimalSize: document.getElementById('optimal_size'),
     generateBtn: document.getElementById('generate_btn'),
     downloadCsvBtn: document.getElementById('download_csv_btn'),
     downloadJsonBtn: document.getElementById('download_json_btn'),
@@ -267,8 +323,19 @@ function getConfig() {
         valueParams,
         correlation: elements.correlation.value,
         alpha: parseFloat(elements.alpha.value),
-        noiseSd: parseFloat(elements.noiseSd.value)
+        noiseSd: parseFloat(elements.noiseSd.value),
+        optimalSize: elements.optimalSize.value
     };
+}
+
+// Populate the optimal-size dropdown based on current n_items
+function updateOptimalSizeOptions() {
+    const n = parseInt(elements.nItems.value) || 1;
+    const current = elements.optimalSize.value;
+    elements.optimalSize.innerHTML = '<option value="random">Random</option>';
+    for (let i = 1; i < n; i++) {
+        elements.optimalSize.innerHTML += `<option value="${i}"${current === String(i) ? ' selected' : ''}>${i}</option>`;
+    }
 }
 
 // Solve 0/1 knapsack with DP, return { value, items[] }
@@ -310,29 +377,18 @@ function solveKnapsack(items, capacity) {
 // Render statistics
 function renderStats(stats) {
     const statItems = [
+        { label: 'Capacity', value: stats.capacity },
         { label: 'Sum of Weights', value: stats.sumWeights },
         { label: 'Sum of Values', value: stats.sumValues },
-        { label: 'Capacity Ratio', value: `${stats.capacityRatio}%`, title: 'Capacity as a percentage of total weight. Below 100% means not all items can fit.' }
+        { label: 'Capacity Ratio', value: `${stats.capacityRatio}%`, title: 'Capacity as a percentage of total weight. Always below 100% — not all items can fit.' }
     ];
     
-    let html = statItems.map(stat => `
+    elements.statsGrid.innerHTML = statItems.map(stat => `
         <div class="stat-card" ${stat.title ? `title="${stat.title}"` : ''}>
             <div class="label">${stat.label}</div>
             <div class="value">${stat.value}</div>
         </div>
     `).join('');
-    
-    // Add warnings if any
-    if (stats.warnings && stats.warnings.length > 0) {
-        html += `
-            <div class="stat-card warning">
-                <div class="label">⚠️ Warnings</div>
-                <div class="value warning-text">${stats.warnings.join('<br>')}</div>
-            </div>
-        `;
-    }
-    
-    elements.statsGrid.innerHTML = html;
 }
 
 // Render optimal solution stats
@@ -343,12 +399,40 @@ function renderOptimal(optimal) {
         { label: 'Total Value', value: optimal.value }
     ];
     
-    elements.optimalGrid.innerHTML = statItems.map(stat => `
+    // Build item list text
+    const INLINE_LIMIT = 8;
+    const itemChips = optimal.items.map(it =>
+        `<span class="item-chip">${it.id} <small>(${it.weight},${it.value})</small></span>`
+    ).join(' ');
+    
+    const isLong = optimal.items.length > INLINE_LIMIT;
+    
+    let html = statItems.map(stat => `
         <div class="stat-card optimal">
             <div class="label">${stat.label}</div>
             <div class="value">${stat.value}</div>
         </div>
     `).join('');
+    
+    // Add the items list card (collapsible if many items)
+    if (isLong) {
+        html += `
+            <div class="stat-card optimal items-card" style="grid-column: 1 / -1;">
+                <div class="label">Selected Items</div>
+                <button class="expand-btn" onclick="this.parentElement.classList.toggle('expanded'); this.textContent = this.parentElement.classList.contains('expanded') ? 'Collapse' : 'Show ${optimal.count} items';">Show ${optimal.count} items</button>
+                <div class="items-list collapsed">${itemChips}</div>
+            </div>
+        `;
+    } else {
+        html += `
+            <div class="stat-card optimal items-card" style="grid-column: 1 / -1;">
+                <div class="label">Selected Items</div>
+                <div class="items-list">${itemChips}</div>
+            </div>
+        `;
+    }
+    
+    elements.optimalGrid.innerHTML = html;
 }
 
 // Render preview table
@@ -435,6 +519,7 @@ function copyJSON() {
 elements.weightDist.addEventListener('change', () => updateDistParams('weight_dist', 'weight_params'));
 elements.valueDist.addEventListener('change', () => updateDistParams('value_dist', 'value_params'));
 elements.correlation.addEventListener('change', updateCorrelationParams);
+elements.nItems.addEventListener('input', updateOptimalSizeOptions);
 elements.generateBtn.addEventListener('click', generate);
 elements.downloadCsvBtn.addEventListener('click', downloadCSV);
 elements.downloadJsonBtn.addEventListener('click', downloadJSON);
@@ -447,3 +532,4 @@ elements.copyJsonBtn.disabled = true;
 updateDistParams('weight_dist', 'weight_params');
 updateDistParams('value_dist', 'value_params');
 updateCorrelationParams();
+updateOptimalSizeOptions();
