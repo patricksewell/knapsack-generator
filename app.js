@@ -27,7 +27,7 @@ function boxMuller(rng) {
     return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
 }
 
-// Distribution samplers (return integers >= 1)
+// Distribution samplers — integer variants (>= 1)
 function sampleUniformInt(rng, min, max) {
     return Math.floor(rng() * (max - min + 1)) + min;
 }
@@ -49,26 +49,49 @@ function sampleLognormalInt(rng, mu, sigma) {
     return val;
 }
 
-// Get sampler function based on distribution type
-function getSampler(distType, params) {
-    switch (distType) {
-        case 'uniform':
-            return (rng) => sampleUniformInt(rng, params.min, params.max);
-        case 'normal':
-            return (rng) => sampleNormalInt(rng, params.mean, params.sd);
-        case 'lognormal':
-            return (rng) => sampleLognormalInt(rng, params.mu, params.sigma);
-        default:
-            throw new Error(`Unknown distribution: ${distType}`);
+// Distribution samplers — continuous variants (> 0, rounded to 2 dp)
+function sampleUniformCont(rng, min, max) {
+    const val = min + rng() * (max - min);
+    return Math.max(0.01, parseFloat(val.toFixed(2)));
+}
+
+function sampleNormalCont(rng, mean, sd) {
+    let val;
+    do {
+        val = mean + sd * boxMuller(rng);
+    } while (val <= 0);
+    return parseFloat(val.toFixed(2));
+}
+
+function sampleLognormalCont(rng, mu, sigma) {
+    const normal = boxMuller(rng);
+    const val = Math.exp(mu + sigma * normal);
+    return parseFloat(Math.max(0.01, val).toFixed(2));
+}
+
+// Get sampler function based on distribution type and integer flag
+function getSampler(distType, params, isInt) {
+    if (isInt) {
+        switch (distType) {
+            case 'uniform': return (rng) => sampleUniformInt(rng, params.min, params.max);
+            case 'normal':  return (rng) => sampleNormalInt(rng, params.mean, params.sd);
+            case 'lognormal': return (rng) => sampleLognormalInt(rng, params.mu, params.sigma);
+        }
+    } else {
+        switch (distType) {
+            case 'uniform': return (rng) => sampleUniformCont(rng, params.min, params.max);
+            case 'normal':  return (rng) => sampleNormalCont(rng, params.mean, params.sd);
+            case 'lognormal': return (rng) => sampleLognormalCont(rng, params.mu, params.sigma);
+        }
     }
+    throw new Error(`Unknown distribution: ${distType}`);
 }
 
 // Distribution name mapping
-const DIST_NAMES = {
-    'uniform': 'UniformInt',
-    'normal': 'NormalInt',
-    'lognormal': 'LognormalInt'
-};
+function distName(type, isInt) {
+    const base = { 'uniform': 'Uniform', 'normal': 'Normal', 'lognormal': 'Lognormal' };
+    return base[type] + (isInt ? 'Int' : '');
+}
 
 const CORRELATION_NAMES = {
     'independent': 'Independent',
@@ -80,8 +103,8 @@ const CORRELATION_NAMES = {
 function generateInstance(config) {
     const rng = mulberry32(hashSeed(config.seed));
     
-    const weightSampler = getSampler(config.weightDist, config.weightParams);
-    const valueSampler = getSampler(config.valueDist, config.valueParams);
+    const weightSampler = getSampler(config.weightDist, config.weightParams, config.weightInt);
+    const valueSampler = getSampler(config.valueDist, config.valueParams, config.valueInt);
     
     const items = [];
     let maxWeight = 0;
@@ -101,13 +124,15 @@ function generateInstance(config) {
             value = valueSampler(rng);
         } else if (config.correlation === 'positive') {
             const noise = config.noiseSd * boxMuller(rng);
-            value = Math.round(config.alpha * items[i].weight + noise);
+            value = config.alpha * items[i].weight + noise;
+            value = config.valueInt ? Math.round(value) : parseFloat(value.toFixed(2));
         } else if (config.correlation === 'negative') {
             const noise = config.noiseSd * boxMuller(rng);
-            value = Math.round(config.alpha * (maxWeight - items[i].weight) + noise);
+            value = config.alpha * (maxWeight - items[i].weight) + noise;
+            value = config.valueInt ? Math.round(value) : parseFloat(value.toFixed(2));
         }
         
-        items[i].value = Math.max(1, value);
+        items[i].value = Math.max(config.valueInt ? 1 : 0.01, value);
     }
     
     // Enforce non-trivial: capacity must be < sum of weights
@@ -131,11 +156,11 @@ function generateInstance(config) {
         capacity: capacity,
         seed: config.seed,
         weight_dist: {
-            name: DIST_NAMES[config.weightDist],
+            name: distName(config.weightDist, config.weightInt),
             params: config.weightParams
         },
         value_dist: config.correlation === 'independent' ? {
-            name: DIST_NAMES[config.valueDist],
+            name: distName(config.valueDist, config.valueInt),
             params: config.valueParams
         } : null,
         correlation: {
@@ -222,6 +247,8 @@ const elements = {
     weightDist: document.getElementById('weight_dist'),
     valueDist: document.getElementById('value_dist'),
     correlation: document.getElementById('correlation'),
+    weightInt: document.getElementById('weight_int'),
+    valueInt: document.getElementById('value_int'),
     weightMin: document.getElementById('weight_min'),
     weightMax: document.getElementById('weight_max'),
     weightMean: document.getElementById('weight_mean'),
@@ -319,8 +346,10 @@ function getConfig() {
         seed: elements.seed.value,
         weightDist,
         weightParams,
+        weightInt: elements.weightInt.checked,
         valueDist,
         valueParams,
+        valueInt: elements.valueInt.checked,
         correlation: elements.correlation.value,
         alpha: parseFloat(elements.alpha.value),
         noiseSd: parseFloat(elements.noiseSd.value),
