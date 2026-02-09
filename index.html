@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0/1 Knapsack Instance Generator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>0/1 Knapsack Instance Generator</h1>
+        
+        <div class="form-section">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="n_items">Number of Items</label>
+                    <input type="number" id="n_items" value="50" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="capacity">Capacity</label>
+                    <input type="number" id="capacity" value="100" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="seed">Seed</label>
+                    <input type="text" id="seed" value="12345">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="weight_dist">Weight Distribution</label>
+                    <select id="weight_dist">
+                        <option value="uniform">UniformInt</option>
+                        <option value="normal">NormalInt</option>
+                        <option value="lognormal">LognormalInt</option>
+                    </select>
+                </div>
+                <div class="form-group params" id="weight_params">
+                    <div class="param-group uniform-params">
+                        <label>Min <input type="number" id="weight_min" value="1" min="1"></label>
+                        <label>Max <input type="number" id="weight_max" value="20" min="1"></label>
+                    </div>
+                    <div class="param-group normal-params hidden">
+                        <label>Mean <input type="number" id="weight_mean" value="10" step="0.1"></label>
+                        <label>SD <input type="number" id="weight_sd" value="3" step="0.1" min="0.1"></label>
+                    </div>
+                    <div class="param-group lognormal-params hidden">
+                        <label>μ <input type="number" id="weight_mu" value="2" step="0.1"></label>
+                        <label>σ <input type="number" id="weight_sigma" value="0.5" step="0.1" min="0.1"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="value_dist">Value Distribution</label>
+                    <select id="value_dist">
+                        <option value="uniform">UniformInt</option>
+                        <option value="normal">NormalInt</option>
+                        <option value="lognormal">LognormalInt</option>
+                    </select>
+                </div>
+                <div class="form-group params" id="value_params">
+                    <div class="param-group uniform-params">
+                        <label>Min <input type="number" id="value_min" value="1" min="1"></label>
+                        <label>Max <input type="number" id="value_max" value="50" min="1"></label>
+                    </div>
+                    <div class="param-group normal-params hidden">
+                        <label>Mean <input type="number" id="value_mean" value="25" step="0.1"></label>
+                        <label>SD <input type="number" id="value_sd" value="8" step="0.1" min="0.1"></label>
+                    </div>
+                    <div class="param-group lognormal-params hidden">
+                        <label>μ <input type="number" id="value_mu" value="3" step="0.1"></label>
+                        <label>σ <input type="number" id="value_sigma" value="0.5" step="0.1" min="0.1"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="correlation">Correlation</label>
+                    <select id="correlation">
+                        <option value="independent">Independent</option>
+                        <option value="positive">PositiveLinear</option>
+                        <option value="negative">NegativeLinear</option>
+                    </select>
+                </div>
+                <div class="form-group params" id="correlation_params">
+                    <div class="param-group correlation-params hidden">
+                        <label>Alpha <input type="number" id="alpha" value="2" step="0.1"></label>
+                        <label>Noise SD <input type="number" id="noise_sd" value="5" step="0.1" min="0"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="button-row">
+                <button id="generate_btn" class="primary">Generate</button>
+                <button id="download_csv_btn">Download CSV</button>
+                <button id="download_json_btn">Download JSON</button>
+                <button id="copy_json_btn">Copy JSON</button>
+            </div>
+        </div>
+
+        <div class="output-section hidden" id="output_section">
+            <h2>Summary Statistics</h2>
+            <div class="stats-grid" id="stats_grid"></div>
+
+            <h2>Preview (First 25 Items)</h2>
+            <div class="table-container">
+                <table id="preview_table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Weight</th>
+                            <th>Value</th>
+                            <th>Value/Weight</th>
+                        </tr>
+                    </thead>
+                    <tbody id="preview_body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
