@@ -153,9 +153,9 @@ function generateInstance(config) {
     const result = {
         problem: '0/1 knapsack',
         n_items: config.nItems,
-        capacity: capacity,
+        budget: capacity,
         seed: config.seed,
-        weight_dist: {
+        price_dist: {
             name: distName(config.weightDist, config.weightInt),
             params: config.weightParams
         },
@@ -234,8 +234,8 @@ function calculateStats(instance) {
     return {
         sumWeights,
         sumValues,
-        capacity: instance.capacity,
-        capacityRatio: (instance.capacity / sumWeights * 100).toFixed(1)
+        capacity: instance.budget,
+        capacityRatio: (instance.budget / sumWeights * 100).toFixed(1)
     };
 }
 
@@ -406,10 +406,10 @@ function solveKnapsack(items, capacity) {
 // Render statistics
 function renderStats(stats) {
     const statItems = [
-        { label: 'Capacity', value: stats.capacity },
-        { label: 'Sum of Weights', value: stats.sumWeights },
+        { label: 'Budget', value: stats.capacity },
+        { label: 'Sum of Prices', value: stats.sumWeights },
         { label: 'Sum of Values', value: stats.sumValues },
-        { label: 'Capacity Ratio', value: `${stats.capacityRatio}%`, title: 'Capacity as a percentage of total weight. Always below 100% — not all items can fit.' }
+        { label: 'Budget Ratio', value: `${stats.capacityRatio}%`, title: 'Budget as a percentage of total price. Always below 100% — not all items can be bought.' }
     ];
     
     elements.statsGrid.innerHTML = statItems.map(stat => `
@@ -424,7 +424,7 @@ function renderStats(stats) {
 function renderOptimal(optimal) {
     const statItems = [
         { label: 'Items Selected', value: `${optimal.count}` },
-        { label: 'Total Weight', value: optimal.weight },
+        { label: 'Total Price', value: optimal.weight },
         { label: 'Total Value', value: optimal.value }
     ];
     
@@ -482,7 +482,7 @@ function generate() {
     const config = getConfig();
     currentInstance = generateInstance(config);
     const stats = calculateStats(currentInstance);
-    const optimal = solveKnapsack(currentInstance.items, currentInstance.capacity);
+    const optimal = solveKnapsack(currentInstance.items, currentInstance.budget);
     
     renderStats(stats);
     renderOptimal(optimal);
@@ -510,13 +510,13 @@ function downloadFile(content, filename, mimeType) {
 function downloadCSV() {
     if (!currentInstance) return;
     
-    let csv = 'id,weight,value\n';
+    let csv = 'id,price,value\n';
     currentInstance.items.forEach(item => {
         csv += `${item.id},${item.weight},${item.value}\n`;
     });
     
     // Add metadata as comments at the end
-    csv += `# capacity,${currentInstance.capacity}\n`;
+    csv += `# budget,${currentInstance.budget}\n`;
     csv += `# n_items,${currentInstance.n_items}\n`;
     csv += `# seed,${currentInstance.seed}\n`;
     

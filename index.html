@@ -9,7 +9,9 @@
 <body>
     <div class="container">
         <h1>0/1 Knapsack Instance Generator</h1>
-        
+
+        <p class="intro">The <strong>0/1 knapsack problem</strong> asks a decision-maker to select a subset of items, each with a price and a value, to maximise total value without exceeding a fixed budget. Each item is either taken or left — hence "0/1." It captures many real-world trade-offs: a <em>consumer choosing which goods to buy</em> given a spending limit, a <em>firm selecting investment projects</em> under a capital constraint, or a <em>government allocating a limited budget across public programmes</em>.</p>
+
         <div class="form-section">
             <div class="form-row">
                 <div class="form-group">
@@ -17,20 +19,20 @@
                     <input type="number" id="n_items" value="12" min="1">
                 </div>
                 <div class="form-group">
-                    <label for="capacity">Capacity</label>
+                    <label for="capacity">Budget</label>
                     <input type="number" id="capacity" value="100" min="1">
                 </div>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
-                    <label for="weight_dist">Weight Distribution</label>
+                    <label for="weight_dist">Price Distribution</label>
                     <select id="weight_dist">
                         <option value="uniform">Uniform</option>
                         <option value="normal">Normal</option>
                         <option value="lognormal">Lognormal</option>
                     </select>
-                    <label class="int-checkbox"><input type="checkbox" id="weight_int" checked> Integer</label>
+                    <label class="int-checkbox"><input type="checkbox" id="weight_int" checked> int</label>
                 </div>
                 <div class="form-group params" id="weight_params">
                     <div class="param-group uniform-params">
@@ -56,7 +58,7 @@
                         <option value="normal">Normal</option>
                         <option value="lognormal">Lognormal</option>
                     </select>
-                    <label class="int-checkbox"><input type="checkbox" id="value_int" checked> Integer</label>
+                    <label class="int-checkbox"><input type="checkbox" id="value_int" checked> int</label>
                 </div>
                 <div class="form-group params" id="value_params">
                     <div class="param-group uniform-params">
@@ -76,16 +78,17 @@
 
             <div class="form-row">
                 <div class="form-group">
-                    <label for="correlation">Correlation</label>
+                    <label for="correlation">Correlation <span class="info-icon" id="corr_info" tabindex="0">ⓘ</span></label>
+                    <div class="info-tooltip" id="corr_tooltip">Controls how price and value relate.<br><strong>Independent:</strong> drawn separately.<br><strong>Positive:</strong> value = α × price + noise.<br><strong>Negative:</strong> value = α × (maxPrice − price) + noise.<br>Noise ~ Normal(0, noise_sd).</div>
                     <select id="correlation">
                         <option value="independent">Independent</option>
-                        <option value="positive">PositiveLinear</option>
-                        <option value="negative">NegativeLinear</option>
+                        <option value="positive">Positive Linear</option>
+                        <option value="negative">Negative Linear</option>
                     </select>
                 </div>
                 <div class="form-group params" id="correlation_params">
                     <div class="param-group correlation-params hidden">
-                        <label>Alpha <input type="number" id="alpha" value="2" step="0.1"></label>
+                        <label>α <input type="number" id="alpha" value="2" step="0.1"></label>
                         <label>Noise SD <input type="number" id="noise_sd" value="5" step="0.1" min="0"></label>
                     </div>
                 </div>
@@ -98,11 +101,10 @@
                         <option value="random">Random</option>
                     </select>
                 </div>
-            </div>
-
-            <div class="seed-row">
-                <label for="seed">Set Seed (optional)</label>
-                <input type="text" id="seed" value="12345" placeholder="e.g. 12345">
+                <div class="form-group seed-inline">
+                    <label for="seed">Seed <span style="font-weight:400;color:#aaa">(optional)</span></label>
+                    <input type="text" id="seed" value="12345" placeholder="e.g. 12345">
+                </div>
             </div>
 
             <div class="button-row">
@@ -126,9 +128,9 @@
                     <thead>
                         <tr>
                             <th>Item</th>
-                            <th>Weight</th>
+                            <th>Price</th>
                             <th>Value</th>
-                            <th>Value/Weight</th>
+                            <th>Value/Price</th>
                         </tr>
                     </thead>
                     <tbody id="preview_body"></tbody>
