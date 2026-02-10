@@ -188,6 +188,42 @@ function computeSahniK(items, capacity, optimalValue) {
     return '> 6';
 }
 
+// Greedy knapsack: sort by value/weight ratio descending, pack greedily
+function greedyValue(items, capacity) {
+    const sorted = items.slice().sort((a, b) => (b.value / b.weight) - (a.value / a.weight));
+    let remCap = capacity;
+    let totalValue = 0;
+    for (const item of sorted) {
+        if (item.weight <= remCap) {
+            totalValue += item.value;
+            remCap -= item.weight;
+        }
+    }
+    return totalValue;
+}
+
+// Count feasible subsets with value >= alphaPercent% of optimal (brute-force bitmask)
+function countNearOptimalBundles(items, capacity, optValue, alphaPercent) {
+    if (alphaPercent === undefined) alphaPercent = 90;
+    const n = items.length;
+    const threshold = alphaPercent * optValue;
+    let count = 0;
+    const total = 1 << n;
+    for (let mask = 1; mask < total; mask++) {
+        let w = 0, v = 0;
+        for (let i = 0; i < n; i++) {
+            if (mask & (1 << i)) {
+                w += items[i].weight;
+                v += items[i].value;
+            }
+        }
+        if (w <= capacity && v * 100 >= threshold) {
+            count++;
+        }
+    }
+    return count;
+}
+
 // ============================================================
 // DOM & UI
 // ============================================================
@@ -224,6 +260,8 @@ const el = {
     optimalSizeHigh: document.getElementById('optimal_size_high'),
     sahniKLow: document.getElementById('sahni_k_low'),
     sahniKHigh: document.getElementById('sahni_k_high'),
+    greedyCapSelect: document.getElementById('greedyCapSelect'),
+    forgivenessCapSelect: document.getElementById('forgivenessCapSelect'),
     generateBtn: document.getElementById('generate_btn'),
     downloadJsonBtn: document.getElementById('download_json_btn'),
     copyJsonBtn: document.getElementById('copy_json_btn'),
@@ -288,11 +326,13 @@ function getConfig() {
         optimalSizeLow: el.optimalSizeLow.value,
         optimalSizeHigh: el.optimalSizeHigh.value,
         sahniKLow: el.sahniKLow.value,
-        sahniKHigh: el.sahniKHigh.value
+        sahniKHigh: el.sahniKHigh.value,
+        greedyCap: el.greedyCapSelect.value,
+        forgivenessCap: el.forgivenessCapSelect.value
     };
 }
 
-function renderOptimalPanel(container, optimal, sahniK, budget) {
+function renderOptimalPanel(container, optimal, sahniK, budget, greedyRatio, n90) {
     const INLINE_LIMIT = 8;
     const itemChips = optimal.items.map(it =>
         `<span class="item-chip">${it.id} <small>(${it.weight},${it.value})</small></span>`
@@ -306,6 +346,13 @@ function renderOptimalPanel(container, optimal, sahniK, budget) {
         { label: 'Total Value', value: optimal.value },
         { label: 'Sahni-k', value: sahniK, title: 'Minimum k for Sahni\'s algorithm.' }
     ];
+
+    if (greedyRatio !== null && greedyRatio !== undefined) {
+        stats.push({ label: 'Greedy Performance', value: `${(greedyRatio * 100).toFixed(1)}%`, title: 'Greedy solution value as % of optimal.' });
+    }
+    if (n90 !== null && n90 !== undefined) {
+        stats.push({ label: 'N90 (Forgiveness)', value: n90, title: 'Feasible subsets achieving \u2265 90% of optimal.' });
+    }
 
     let html = stats.map(s => `
         <div class="stat-card optimal" ${s.title ? `title="${s.title}"` : ''}>
@@ -337,7 +384,7 @@ function updateOptimalSizeOptions() {
     const n = parseInt(el.nItems.value) || 1;
     [el.optimalSizeLow, el.optimalSizeHigh].forEach(select => {
         const current = select.value;
-        select.innerHTML = '<option value="random">Random</option>';
+        select.innerHTML = '<option value="no_filter">No filter</option>';
         for (let i = 1; i < n; i++) {
             select.innerHTML += `<option value="${i}"${current === String(i) ? ' selected' : ''}>${i}</option>`;
         }
@@ -355,8 +402,8 @@ function findCapacityInRange(items, budgetMin, budgetMax, targetOptSize, targetS
     // Collect candidate capacities
     let candidates = [];
 
-    if (targetOptSize === 'random') {
-        if (targetSahniK === 'random') {
+    if (targetOptSize === 'no_filter') {
+        if (targetSahniK === 'no_filter') {
             // No constraints: pick midpoint
             const cap = Math.round((lo + hi) / 2);
             const sol = solveKnapsack(items, cap);
@@ -376,7 +423,7 @@ function findCapacityInRange(items, budgetMin, budgetMax, targetOptSize, targetS
     if (candidates.length === 0) return null;
 
     // If no Sahni-k target, take the middle candidate
-    if (targetSahniK === 'random') {
+    if (targetSahniK === 'no_filter') {
         const cap = candidates[Math.floor(candidates.length / 2)];
         const sol = solveKnapsack(items, cap);
         return { capacity: cap, sol, sahniK: null };
@@ -412,8 +459,15 @@ function generate() {
     const MAX_ATTEMPTS = 10000;
     const baseSeed = config.seed;
 
+    const greedyActive = config.greedyCap !== 'no_filter';
+    const greedyThreshold = greedyActive ? parseFloat(config.greedyCap) : 1;
+    const forgivenessActive = config.forgivenessCap !== 'no_filter';
+    const forgivenessCap = forgivenessActive ? parseInt(config.forgivenessCap) : Infinity;
+    const canBruteForceN90 = config.nItems <= 20;
+
     setTimeout(() => {
         let items, bLow, bHigh, optLow, optHigh, sahniLow, sahniHigh;
+        let greedyRatioLow = null, greedyRatioHigh = null, n90Low = null, n90High = null;
         let usedSeed = baseSeed;
         let warning = null;
         let found = false;
@@ -436,11 +490,30 @@ function generate() {
             );
             if (!highResult) continue;
 
+            const capLow = lowResult.capacity;
+            const capHigh = highResult.capacity;
+            const solLow = lowResult.sol || solveKnapsack(items, capLow);
+            const solHigh = highResult.sol || solveKnapsack(items, capHigh);
+
+            // Greedy constraint — check BOTH budgets
+            if (greedyActive) {
+                const gLow = solLow.value > 0 ? greedyValue(items, capLow) / solLow.value : 0;
+                const gHigh = solHigh.value > 0 ? greedyValue(items, capHigh) / solHigh.value : 0;
+                if (gLow >= greedyThreshold || gHigh >= greedyThreshold) continue;
+            }
+
+            // Forgiveness constraint — check BOTH budgets
+            if (forgivenessActive && canBruteForceN90) {
+                const n90L = countNearOptimalBundles(items, capLow, solLow.value, 90);
+                const n90H = countNearOptimalBundles(items, capHigh, solHigh.value, 90);
+                if (n90L > forgivenessCap || n90H > forgivenessCap) continue;
+            }
+
             // Both satisfied
-            bLow = lowResult.capacity;
-            bHigh = highResult.capacity;
-            optLow = lowResult.sol;
-            optHigh = highResult.sol;
+            bLow = capLow;
+            bHigh = capHigh;
+            optLow = solLow;
+            optHigh = solHigh;
             sahniLow = lowResult.sahniK;
             sahniHigh = highResult.sahniK;
             found = true;
@@ -460,25 +533,32 @@ function generate() {
             sahniHigh = null;
 
             const constraints = [];
-            if (config.optimalSizeLow !== 'random') constraints.push(`low optimal = ${config.optimalSizeLow} items`);
-            if (config.sahniKLow !== 'random') constraints.push(`low Sahni-k = ${config.sahniKLow}`);
-            if (config.optimalSizeHigh !== 'random') constraints.push(`high optimal = ${config.optimalSizeHigh} items`);
-            if (config.sahniKHigh !== 'random') constraints.push(`high Sahni-k = ${config.sahniKHigh}`);
-            const suggestions = ['widen budget ranges', 'relax some constraints', 'try a different seed'];
-            warning = `Could not satisfy constraints (${constraints.join(', ')}) after ${MAX_ATTEMPTS} attempts. Showing result for base seed. Try: ${suggestions.join('; ')}.`;
+            if (config.optimalSizeLow !== 'no_filter') constraints.push(`low optimal = ${config.optimalSizeLow} items`);
+            if (config.sahniKLow !== 'no_filter') constraints.push(`low Sahni-k = ${config.sahniKLow}`);
+            if (config.optimalSizeHigh !== 'no_filter') constraints.push(`high optimal = ${config.optimalSizeHigh} items`);
+            if (config.sahniKHigh !== 'no_filter') constraints.push(`high Sahni-k = ${config.sahniKHigh}`);
+            if (greedyActive) constraints.push(`greedy < ${(greedyThreshold * 100).toFixed(0)}%`);
+            if (forgivenessActive) constraints.push(`N90 ≤ ${forgivenessCap}`);
+            warning = `Could not satisfy constraints (${constraints.join(', ')}) after ${MAX_ATTEMPTS} attempts. Showing result for base seed. Try loosening constraints, widening budget ranges, or changing seed.`;
         }
 
         // Compute Sahni-k if not already done
         if (sahniLow === null) sahniLow = computeSahniK(items, bLow, optLow.value);
         if (sahniHigh === null) sahniHigh = computeSahniK(items, bHigh, optHigh.value);
 
+        // Compute greedy ratio and N90 for display
+        greedyRatioLow = optLow.value > 0 ? greedyValue(items, bLow) / optLow.value : 0;
+        greedyRatioHigh = optHigh.value > 0 ? greedyValue(items, bHigh) / optHigh.value : 0;
+        if (canBruteForceN90) {
+            n90Low = countNearOptimalBundles(items, bLow, optLow.value, 90);
+            n90High = countNearOptimalBundles(items, bHigh, optHigh.value, 90);
+        }
+
         const sumWeights = items.reduce((s, it) => s + it.weight, 0);
-        const sumValues = items.reduce((s, it) => s + it.value, 0);
 
         // Summary stats
         let statsHtml = [
-            { label: 'Sum of Prices', value: sumWeights },
-            { label: 'Sum of Values', value: sumValues }
+            { label: 'Sum of Prices', value: sumWeights }
         ].map(s => `<div class="stat-card"><div class="label">${s.label}</div><div class="value">${s.value}</div></div>`).join('');
 
         if (usedSeed !== baseSeed) {
@@ -491,8 +571,8 @@ function generate() {
 
         el.statsGrid.innerHTML = statsHtml;
 
-        renderOptimalPanel(el.optimalLow, optLow, sahniLow, bLow);
-        renderOptimalPanel(el.optimalHigh, optHigh, sahniHigh, bHigh);
+        renderOptimalPanel(el.optimalLow, optLow, sahniLow, bLow, greedyRatioLow, n90Low);
+        renderOptimalPanel(el.optimalHigh, optHigh, sahniHigh, bHigh, greedyRatioHigh, n90High);
 
         // Preview table with dual highlighting
         const lowIds = new Set(optLow.items.map(it => it.id));

@@ -126,13 +126,13 @@
                 <div class="form-group">
                     <label for="optimal_size">Items in Optimal Solution</label>
                     <select id="optimal_size">
-                        <option value="random">Random</option>
+                        <option value="no_filter">No filter</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="target_sahni_k">Sahni-k <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Target Sahni-k: the minimum number of items to enumerate before greedy fills optimally.<br><strong style="color:#74b9ff">k=0:</strong> pure greedy is optimal (easy).<br><strong style="color:#fab1a0">Higher k:</strong> more items must be "guessed" — harder instance.<br>Capped at 6. Generation may take longer for high k.</div></span></label>
+                    <label for="target_sahni_k">Sahni-k <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Minimum number of items to enumerate before greedy fills optimally.<br><strong style="color:#74b9ff">k=0:</strong> pure greedy is optimal (easy).<br><strong style="color:#fab1a0">Higher k:</strong> more items must be "guessed" — harder instance.<br>Capped at 6. Generation may take longer for high k.</div></span></label>
                     <select id="target_sahni_k">
-                        <option value="random">Random</option>
+                        <option value="no_filter">No filter</option>
                         <option value="0">0</option>
                         <option value="1">1</option>
                         <option value="2">2</option>
@@ -150,9 +150,9 @@
 
             <div class="form-row">
                 <div class="form-group">
-                    <label for="greedyCapSelect">Max greedy proximity to optimal <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Reject instances where the greedy solution is too close to optimal.<br><strong>Random:</strong> no filter.<br><strong>99%:</strong> reject if greedy ≥ 99% of OPT.<br>Lower % = stricter (greedy must be further from optimal).</div></span></label>
+                    <label for="greedyCapSelect">Max greedy proximity to optimal <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Reject instances where the greedy solution is too close to optimal.<br><strong>99%:</strong> reject if greedy ≥ 99% of OPT.<br>Lower % = stricter (greedy must be further from optimal).</div></span></label>
                     <select id="greedyCapSelect">
-                        <option value="random">Random</option>
+                        <option value="no_filter">No filter</option>
                         <option value="1.00">100%</option>
                         <option value="0.99">99%</option>
                         <option value="0.98">98%</option>
@@ -162,9 +162,9 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="forgivenessCapSelect">Max # feasible bundles within 90% of optimal <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Limits how many feasible subsets achieve ≥ 90% of optimal value.<br><strong>No limit:</strong> no filter.<br>Lower cap = fewer near-optimal alternatives = less "forgiving" instance.</div></span></label>
+                    <label for="forgivenessCapSelect">Max # feasible bundles within 90% of optimal <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Limits how many feasible subsets achieve ≥ 90% of optimal value.<br>Lower cap = fewer near-optimal alternatives = less "forgiving" instance.</div></span></label>
                     <select id="forgivenessCapSelect">
-                        <option value="none">No limit</option>
+                        <option value="no_filter">No filter</option>
                         <option value="5">5</option>
                         <option value="10">10</option>
                         <option value="15">15</option>

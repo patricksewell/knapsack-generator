@@ -174,9 +174,9 @@ function findCapacityInRange(items, budgetMin, budgetMax, targetOptSize, targetS
     // Collect candidate capacities
     let candidates = [];
     
-    if (targetOptSize === 'random') {
+    if (targetOptSize === 'no_filter') {
         // Try midpoint first, then scan if Sahni-k is targeted
-        if (targetSahniK === 'random') {
+        if (targetSahniK === 'no_filter') {
             const cap = Math.round((lo + hi) / 2);
             return { capacity: cap, found: true };
         }
@@ -193,7 +193,7 @@ function findCapacityInRange(items, budgetMin, budgetMax, targetOptSize, targetS
     if (candidates.length === 0) return null;
     
     // If no Sahni-k target, take the first (or middle) candidate
-    if (targetSahniK === 'random') {
+    if (targetSahniK === 'no_filter') {
         const cap = candidates[Math.floor(candidates.length / 2)];
         return { capacity: cap, found: true };
     }
@@ -222,11 +222,11 @@ function generateInstance(config) {
     let found = false;
     
     // Parse greedy constraint
-    const greedyActive = config.greedyCap !== 'random';
+    const greedyActive = config.greedyCap !== 'no_filter';
     const greedyThreshold = greedyActive ? parseFloat(config.greedyCap) : null;
     
     // Parse forgiveness constraint
-    const forgivenessActive = config.forgivenessCap !== 'none';
+    const forgivenessActive = config.forgivenessCap !== 'no_filter';
     const forgivenessCap = forgivenessActive ? parseInt(config.forgivenessCap) : null;
     
     // N90 brute-force is only feasible for small n (2^n subsets)
@@ -286,8 +286,8 @@ function generateInstance(config) {
         if (canBruteForceN90) foundN90 = countNearOptimalBundles(items, capacity, sol.value, 90);
         
         const constraints = [];
-        if (config.optimalSize !== 'random') constraints.push(`${config.optimalSize} items in optimal`);
-        if (config.targetSahniK !== 'random') constraints.push(`Sahni-k = ${config.targetSahniK}`);
+        if (config.optimalSize !== 'no_filter') constraints.push(`${config.optimalSize} items in optimal`);
+        if (config.targetSahniK !== 'no_filter') constraints.push(`Sahni-k = ${config.targetSahniK}`);
         if (greedyActive) constraints.push(`greedy < ${(greedyThreshold * 100).toFixed(0)}% of OPT`);
         if (forgivenessActive) constraints.push(`N90 ≤ ${forgivenessCap}`);
         warning = `Could not satisfy constraints (${constraints.join(', ')}) after ${MAX_ATTEMPTS} attempts. Showing result for base seed. Try loosening Greedy proximity, increasing Forgiveness cap, widening budget range, or changing seed.`;
@@ -330,13 +330,10 @@ function generateInstance(config) {
 // Calculate statistics
 function calculateStats(instance) {
     const weights = instance.items.map(i => i.weight);
-    const values = instance.items.map(i => i.value);
     const sumWeights = weights.reduce((a, b) => a + b, 0);
-    const sumValues = values.reduce((a, b) => a + b, 0);
     
     return {
         sumWeights,
-        sumValues,
         capacity: instance.budget,
         budgetRange: instance.budget_range,
         capacityRatio: (instance.budget / sumWeights * 100).toFixed(1),
@@ -481,7 +478,7 @@ function getConfig() {
 function updateOptimalSizeOptions() {
     const n = parseInt(elements.nItems.value) || 1;
     const current = elements.optimalSize.value;
-    elements.optimalSize.innerHTML = '<option value="random">Random</option>';
+    elements.optimalSize.innerHTML = '<option value="no_filter">No filter</option>';
     for (let i = 1; i < n; i++) {
         elements.optimalSize.innerHTML += `<option value="${i}"${current === String(i) ? ' selected' : ''}>${i}</option>`;
     }
@@ -630,7 +627,6 @@ function renderStats(stats) {
     const statItems = [
         { label: 'Budget', value: stats.capacity },
         { label: 'Sum of Prices', value: stats.sumWeights },
-        { label: 'Sum of Values', value: stats.sumValues },
         { label: 'Budget Ratio', value: `${stats.capacityRatio}%`, title: 'Budget as a percentage of total price. Always below 100% — not all items can be bought.' }
     ];
     
@@ -641,7 +637,7 @@ function renderStats(stats) {
     // Greedy ratio
     if (stats.greedyRatio !== null && stats.greedyRatio !== undefined) {
         statItems.push({
-            label: 'Greedy / OPT',
+            label: 'Greedy Performance',
             value: `${(stats.greedyRatio * 100).toFixed(1)}%`,
             title: 'Greedy solution value as a percentage of optimal. Lower = greedy is further from optimal = harder instance.'
         });

@@ -147,7 +147,7 @@
                 <div class="form-group">
                     <label for="sahni_k_low">Sahni-k</label>
                     <select id="sahni_k_low">
-                        <option value="random">Random</option>
+                        <option value="no_filter">No filter</option>
                         <option value="0">0</option>
                         <option value="1" selected>1</option>
                         <option value="2">2</option>
@@ -180,7 +180,7 @@
                 <div class="form-group">
                     <label for="sahni_k_high">Sahni-k</label>
                     <select id="sahni_k_high">
-                        <option value="random">Random</option>
+                        <option value="no_filter">No filter</option>
                         <option value="0">0</option>
                         <option value="1" selected>1</option>
                         <option value="2">2</option>
@@ -277,6 +277,35 @@
                 <div class="form-group seed-inline">
                     <label for="seed">Starting Seed</label>
                     <input type="text" id="seed" value="1234" placeholder="e.g. 1234">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="greedyCapSelect">Max greedy proximity to optimal <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Reject instances where the greedy heuristic reaches the chosen fraction of the optimal value (for either budget). Lower thresholds make the instance harder for greedy solvers.<br><strong>No filter:</strong> accept any greedy ratio.</div></span></label>
+                    <select id="greedyCapSelect">
+                        <option value="no_filter">No filter</option>
+                        <option value="1.00">100 %</option>
+                        <option value="0.99">99 %</option>
+                        <option value="0.98">98 %</option>
+                        <option value="0.97">97 %</option>
+                        <option value="0.96">96 %</option>
+                        <option value="0.95">95 %</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="forgivenessCapSelect">Max # feasible bundles within 90% of optimal <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Count of feasible subsets whose total value ≥ 90 % of the optimum (N90). Lower caps make the instance less forgiving. Only evaluated when items ≤ 20.</div></span></label>
+                    <select id="forgivenessCapSelect">
+                        <option value="no_filter">No filter</option>
+                        <option value="5">5</option>
+                        <option value="10">10</option>
+                        <option value="15">15</option>
+                        <option value="20">20</option>
+                        <option value="30">30</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                    </select>
                 </div>
             </div>
 
