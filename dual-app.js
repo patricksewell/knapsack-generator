@@ -194,8 +194,10 @@ function computeSahniK(items, capacity, optimalValue) {
 
 const el = {
     nItems: document.getElementById('n_items'),
-    budgetLow: document.getElementById('budget_low'),
-    budgetHigh: document.getElementById('budget_high'),
+    budgetLowMin: document.getElementById('budget_low_min'),
+    budgetLowMax: document.getElementById('budget_low_max'),
+    budgetHighMin: document.getElementById('budget_high_min'),
+    budgetHighMax: document.getElementById('budget_high_max'),
     seed: document.getElementById('seed'),
     weightDist: document.getElementById('weight_dist'),
     valueDist: document.getElementById('value_dist'),
@@ -271,8 +273,10 @@ function getConfig() {
 
     return {
         nItems: parseInt(el.nItems.value),
-        budgetLow: parseInt(el.budgetLow.value),
-        budgetHigh: parseInt(el.budgetHigh.value),
+        budgetLowMin: parseInt(el.budgetLowMin.value),
+        budgetLowMax: parseInt(el.budgetLowMax.value),
+        budgetHighMin: parseInt(el.budgetHighMin.value),
+        budgetHighMax: parseInt(el.budgetHighMax.value),
         seed: el.seed.value,
         weightDist, weightParams, weightInt: el.weightInt.checked,
         valueDist, valueParams, valueInt: el.valueInt.checked,
@@ -340,30 +344,71 @@ function updateOptimalSizeOptions() {
     });
 }
 
-// Check whether a single budget's solution matches its constraints
-function checkConstraints(items, budget, targetOptSize, targetSahniK) {
-    const sol = solveKnapsack(items, budget);
-    if (targetOptSize !== 'random' && sol.count !== parseInt(targetOptSize)) return null;
-    let sahniK = null;
-    if (targetSahniK !== 'random') {
-        sahniK = computeSahniK(items, budget, sol.value);
-        if (sahniK !== parseInt(targetSahniK)) return null;
+// Find a valid capacity within [lo, hi] that satisfies optimal size + Sahni-k targets.
+// Returns { capacity, sol, sahniK } or null.
+function findCapacityInRange(items, budgetMin, budgetMax, targetOptSize, targetSahniK) {
+    const sumWeights = items.reduce((s, it) => s + it.weight, 0);
+    const lo = Math.max(1, budgetMin);
+    const hi = Math.min(budgetMax, sumWeights - 1);
+    if (lo > hi) return null;
+
+    // Collect candidate capacities
+    let candidates = [];
+
+    if (targetOptSize === 'random') {
+        if (targetSahniK === 'random') {
+            // No constraints: pick midpoint
+            const cap = Math.round((lo + hi) / 2);
+            const sol = solveKnapsack(items, cap);
+            return { capacity: cap, sol, sahniK: null };
+        }
+        // Only Sahni-k targeted: scan all capacities
+        for (let c = lo; c <= hi; c++) candidates.push(c);
+    } else {
+        // Scan for capacities that give the target optimal count
+        const target = parseInt(targetOptSize);
+        for (let c = lo; c <= hi; c++) {
+            const sol = solveKnapsack(items, c);
+            if (sol.count === target) candidates.push(c);
+        }
     }
-    return { sol, sahniK };
+
+    if (candidates.length === 0) return null;
+
+    // If no Sahni-k target, take the middle candidate
+    if (targetSahniK === 'random') {
+        const cap = candidates[Math.floor(candidates.length / 2)];
+        const sol = solveKnapsack(items, cap);
+        return { capacity: cap, sol, sahniK: null };
+    }
+
+    // Check Sahni-k for each candidate capacity
+    const targetK = parseInt(targetSahniK);
+    for (const c of candidates) {
+        const sol = solveKnapsack(items, c);
+        const k = computeSahniK(items, c, sol.value);
+        if (k === targetK) {
+            return { capacity: c, sol, sahniK: k };
+        }
+    }
+
+    return null;
 }
 
 function generate() {
     const config = getConfig();
-    if (config.budgetLow > config.budgetHigh) {
-        alert('Low Budget must be ≤ High Budget.');
+    if (config.budgetLowMin > config.budgetLowMax) {
+        alert('Low Budget Min must be ≤ Low Budget Max.');
+        return;
+    }
+    if (config.budgetHighMin > config.budgetHighMax) {
+        alert('High Budget Min must be ≤ High Budget Max.');
         return;
     }
 
     el.generateBtn.textContent = 'Generating…';
     el.generateBtn.disabled = true;
 
-    const hasTargets = config.optimalSizeLow !== 'random' || config.sahniKLow !== 'random'
-                    || config.optimalSizeHigh !== 'random' || config.sahniKHigh !== 'random';
     const MAX_ATTEMPTS = 10000;
     const baseSeed = config.seed;
 
@@ -376,20 +421,24 @@ function generate() {
         for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             usedSeed = attempt === 0 ? baseSeed : baseSeed + '_' + attempt;
             items = generateItems(config, usedSeed);
-            const sumWeights = items.reduce((s, it) => s + it.weight, 0);
 
-            bLow = Math.max(1, Math.min(config.budgetLow, sumWeights - 1));
-            bHigh = Math.max(1, Math.min(config.budgetHigh, sumWeights - 1));
-
-            // Check low-budget constraints
-            const lowResult = checkConstraints(items, bLow, config.optimalSizeLow, config.sahniKLow);
+            // Find a valid capacity in the low budget range
+            const lowResult = findCapacityInRange(
+                items, config.budgetLowMin, config.budgetLowMax,
+                config.optimalSizeLow, config.sahniKLow
+            );
             if (!lowResult) continue;
 
-            // Check high-budget constraints
-            const highResult = checkConstraints(items, bHigh, config.optimalSizeHigh, config.sahniKHigh);
+            // Find a valid capacity in the high budget range
+            const highResult = findCapacityInRange(
+                items, config.budgetHighMin, config.budgetHighMax,
+                config.optimalSizeHigh, config.sahniKHigh
+            );
             if (!highResult) continue;
 
-            // All constraints satisfied
+            // Both satisfied
+            bLow = lowResult.capacity;
+            bHigh = highResult.capacity;
             optLow = lowResult.sol;
             optHigh = highResult.sol;
             sahniLow = lowResult.sahniK;
@@ -399,30 +448,29 @@ function generate() {
         }
 
         if (!found) {
-            // Fallback: use base seed, solve without constraints
+            // Fallback: use base seed, pick midpoints
             usedSeed = baseSeed;
             items = generateItems(config, usedSeed);
             const sumWeights = items.reduce((s, it) => s + it.weight, 0);
-            bLow = Math.max(1, Math.min(config.budgetLow, sumWeights - 1));
-            bHigh = Math.max(1, Math.min(config.budgetHigh, sumWeights - 1));
+            bLow = Math.max(1, Math.min(Math.round((config.budgetLowMin + config.budgetLowMax) / 2), sumWeights - 1));
+            bHigh = Math.max(1, Math.min(Math.round((config.budgetHighMin + config.budgetHighMax) / 2), sumWeights - 1));
             optLow = solveKnapsack(items, bLow);
             optHigh = solveKnapsack(items, bHigh);
-            sahniLow = null; sahniHigh = null;
+            sahniLow = null;
+            sahniHigh = null;
 
             const constraints = [];
             if (config.optimalSizeLow !== 'random') constraints.push(`low optimal = ${config.optimalSizeLow} items`);
             if (config.sahniKLow !== 'random') constraints.push(`low Sahni-k = ${config.sahniKLow}`);
             if (config.optimalSizeHigh !== 'random') constraints.push(`high optimal = ${config.optimalSizeHigh} items`);
             if (config.sahniKHigh !== 'random') constraints.push(`high Sahni-k = ${config.sahniKHigh}`);
-            const suggestions = ['try a different seed', 'relax some constraints', 'change distribution parameters'];
-            warning = `Could not satisfy constraints (${constraints.join(', ')}) after ${MAX_ATTEMPTS} attempts. Showing result for base seed. Try to: ${suggestions.join('; ')}.`;
+            const suggestions = ['widen budget ranges', 'relax some constraints', 'try a different seed'];
+            warning = `Could not satisfy constraints (${constraints.join(', ')}) after ${MAX_ATTEMPTS} attempts. Showing result for base seed. Try: ${suggestions.join('; ')}.`;
         }
 
         // Compute Sahni-k if not already done
         if (sahniLow === null) sahniLow = computeSahniK(items, bLow, optLow.value);
         if (sahniHigh === null) sahniHigh = computeSahniK(items, bHigh, optHigh.value);
-        if (!optLow) optLow = solveKnapsack(items, bLow);
-        if (!optHigh) optHigh = solveKnapsack(items, bHigh);
 
         const sumWeights = items.reduce((s, it) => s + it.weight, 0);
         const sumValues = items.reduce((s, it) => s + it.value, 0);
@@ -468,7 +516,9 @@ function generate() {
             seed: usedSeed,
             seed_requested: baseSeed,
             budget_low: bLow,
+            budget_low_range: [config.budgetLowMin, config.budgetLowMax],
             budget_high: bHigh,
+            budget_high_range: [config.budgetHighMin, config.budgetHighMax],
             target_optimal_size_low: config.optimalSizeLow,
             target_optimal_size_high: config.optimalSizeHigh,
             target_sahni_k_low: config.sahniKLow,

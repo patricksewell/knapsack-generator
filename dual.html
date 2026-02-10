@@ -72,13 +72,67 @@
                     <label for="n_items">Number of Items</label>
                     <input type="number" id="n_items" value="12" min="1">
                 </div>
+            </div>
+
+            <div class="form-row">
+                <div class="target-section-label low-label">Low Budget</div>
                 <div class="form-group">
-                    <label for="budget_low">Low Budget</label>
-                    <input type="number" id="budget_low" value="40" min="1">
+                    <label for="budget_low_min">Min</label>
+                    <input type="number" id="budget_low_min" value="20" min="1">
                 </div>
                 <div class="form-group">
-                    <label for="budget_high">High Budget</label>
-                    <input type="number" id="budget_high" value="100" min="1">
+                    <label for="budget_low_max">Max</label>
+                    <input type="number" id="budget_low_max" value="60" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="optimal_size_low">Optimal Items</label>
+                    <select id="optimal_size_low">
+                        <option value="random">Random</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="sahni_k_low">Sahni-k</label>
+                    <select id="sahni_k_low">
+                        <option value="random">Random</option>
+                        <option value="0">0</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="target-section-label high-label">High Budget</div>
+                <div class="form-group">
+                    <label for="budget_high_min">Min</label>
+                    <input type="number" id="budget_high_min" value="70" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="budget_high_max">Max</label>
+                    <input type="number" id="budget_high_max" value="120" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="optimal_size_high">Optimal Items</label>
+                    <select id="optimal_size_high">
+                        <option value="random">Random</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="sahni_k_high">Sahni-k</label>
+                    <select id="sahni_k_high">
+                        <option value="random">Random</option>
+                        <option value="0">0</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                    </select>
                 </div>
             </div>
 
@@ -160,52 +214,6 @@
                         <option value="high">High (λ=2.0)</option>
                     </select>
                     <label class="int-checkbox"><input type="checkbox" id="integer_ratios"> integer ratios</label>
-                </div>
-            </div>
-
-            <div class="form-row">
-                <div class="target-section-label low-label">Low Budget Targets</div>
-                <div class="form-group">
-                    <label for="optimal_size_low">Optimal Items (Low)</label>
-                    <select id="optimal_size_low">
-                        <option value="random">Random</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="sahni_k_low">Sahni-k (Low)</label>
-                    <select id="sahni_k_low">
-                        <option value="random">Random</option>
-                        <option value="0">0</option>
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                        <option value="6">6</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="form-row">
-                <div class="target-section-label high-label">High Budget Targets</div>
-                <div class="form-group">
-                    <label for="optimal_size_high">Optimal Items (High)</label>
-                    <select id="optimal_size_high">
-                        <option value="random">Random</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="sahni_k_high">Sahni-k (High)</label>
-                    <select id="sahni_k_high">
-                        <option value="random">Random</option>
-                        <option value="0">0</option>
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                        <option value="6">6</option>
-                    </select>
                 </div>
             </div>
 
