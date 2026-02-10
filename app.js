@@ -206,7 +206,7 @@ function findCapacityInRange(items, budgetMin, budgetMax, targetOptSize, targetS
 // Main generation: iterate seeds until constraints are satisfied
 function generateInstance(config) {
     const baseSeed = config.seed;
-    const MAX_ATTEMPTS = 500;
+    const MAX_ATTEMPTS = 2000;
     let usedSeed = baseSeed;
     let items, capacityResult;
     
@@ -233,7 +233,12 @@ function generateInstance(config) {
         const constraints = [];
         if (config.optimalSize !== 'random') constraints.push(`${config.optimalSize} items in optimal`);
         if (config.targetSahniK !== 'random') constraints.push(`Sahni-k = ${config.targetSahniK}`);
-        warning = `Could not satisfy constraints (${constraints.join(', ')}) within budget [${config.budgetMin}, ${config.budgetMax}] after ${MAX_ATTEMPTS} seed attempts. Showing closest result.`;
+        const suggestions = [];
+        if (config.budgetMax - config.budgetMin < 100) suggestions.push('widen the budget range');
+        if (config.optimalSize !== 'random') suggestions.push('set Items in Optimal Solution to Random');
+        if (config.targetSahniK !== 'random') suggestions.push('set Sahni-k to Random');
+        suggestions.push('try a different seed');
+        warning = `Could not satisfy constraints (${constraints.join(', ')}) within budget [${config.budgetMin}, ${config.budgetMax}] after ${MAX_ATTEMPTS} attempts. Showing closest result. Try to: ${suggestions.join('; ')}.`;
     } else {
         capacity = capacityResult.capacity;
     }
