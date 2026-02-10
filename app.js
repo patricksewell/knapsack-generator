@@ -154,76 +154,86 @@ function generateItems(config, seedStr) {
 }
 
 // Find a valid capacity within [budgetMin, budgetMax] for items,
-// optionally targeting a specific optimal solution size.
-// Returns { capacity, found } or null if no valid capacity exists in range.
-function findCapacityInRange(items, budgetMin, budgetMax, targetOptSize) {
+// optionally targeting a specific optimal solution size and Sahni-k.
+// Returns { capacity, sahniK, found } or null.
+function findCapacityInRange(items, budgetMin, budgetMax, targetOptSize, targetSahniK) {
     const sumWeights = items.reduce((s, it) => s + it.weight, 0);
-    // Clamp range to valid bounds
     const lo = Math.max(1, budgetMin);
     const hi = Math.min(budgetMax, sumWeights - 1);
     
-    if (lo > hi) return null; // range is infeasible
+    if (lo > hi) return null;
+    
+    // Collect candidate capacities
+    let candidates = [];
     
     if (targetOptSize === 'random') {
-        // No target — pick midpoint of range
-        const cap = Math.round((lo + hi) / 2);
-        return { capacity: cap, found: true };
-    }
-    
-    const target = parseInt(targetOptSize);
-    
-    // Scan the budget range for a capacity that gives exactly 'target' items
-    // Use binary search first to find boundary, then linear scan nearby
-    
-    // Quick check: try a few strategic points first
-    const candidates = [Math.round((lo + hi) / 2), lo, hi];
-    for (const c of candidates) {
-        if (c >= lo && c <= hi) {
+        // Try midpoint first, then scan if Sahni-k is targeted
+        if (targetSahniK === 'random') {
+            const cap = Math.round((lo + hi) / 2);
+            return { capacity: cap, found: true };
+        }
+        // Need to scan for Sahni-k match at any capacity
+        for (let c = lo; c <= hi; c++) candidates.push(c);
+    } else {
+        // Scan for capacities that give the target optimal count
+        for (let c = lo; c <= hi; c++) {
             const sol = solveKnapsack(items, c);
-            if (sol.count === target) return { capacity: c, found: true };
+            if (sol.count === parseInt(targetOptSize)) candidates.push(c);
         }
     }
     
-    // Full scan — for typical ranges this is fast
-    for (let c = lo; c <= hi; c++) {
-        const sol = solveKnapsack(items, c);
-        if (sol.count === target) return { capacity: c, found: true };
+    if (candidates.length === 0) return null;
+    
+    // If no Sahni-k target, take the first (or middle) candidate
+    if (targetSahniK === 'random') {
+        const cap = candidates[Math.floor(candidates.length / 2)];
+        return { capacity: cap, found: true };
     }
     
-    return null; // No capacity in range gives target optimal size
+    // Check Sahni-k for each candidate capacity
+    const targetK = parseInt(targetSahniK);
+    for (const c of candidates) {
+        const sol = solveKnapsack(items, c);
+        const k = computeSahniK(items, c, sol.value);
+        if (k === targetK) {
+            return { capacity: c, sahniK: k, found: true };
+        }
+    }
+    
+    return null;
 }
 
 // Main generation: iterate seeds until constraints are satisfied
 function generateInstance(config) {
     const baseSeed = config.seed;
-    const MAX_ATTEMPTS = 200;
+    const MAX_ATTEMPTS = 500;
     let usedSeed = baseSeed;
     let items, capacityResult;
     
-    // Attempt with base seed first, then variations
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         usedSeed = attempt === 0 ? baseSeed : baseSeed + '_' + attempt;
         items = generateItems(config, usedSeed);
         capacityResult = findCapacityInRange(
-            items, config.budgetMin, config.budgetMax, config.optimalSize
+            items, config.budgetMin, config.budgetMax,
+            config.optimalSize, config.targetSahniK
         );
         
         if (capacityResult && capacityResult.found) break;
     }
     
-    // Fallback: if no solution found, use the last generated items
-    // with the best capacity we can manage
     let capacity;
     let warning = null;
     if (!capacityResult || !capacityResult.found) {
-        // Fall back: use base seed items, clamp capacity to range
         items = generateItems(config, baseSeed);
         usedSeed = baseSeed;
         const sumWeights = items.reduce((s, it) => s + it.weight, 0);
         capacity = Math.min(config.budgetMax, sumWeights - 1);
         capacity = Math.max(config.budgetMin, capacity);
         if (capacity < 1) capacity = 1;
-        warning = `Could not find a budget in [${config.budgetMin}, ${config.budgetMax}] with exactly ${config.optimalSize} items in the optimal solution after ${MAX_ATTEMPTS} attempts. Showing closest result.`;
+        const constraints = [];
+        if (config.optimalSize !== 'random') constraints.push(`${config.optimalSize} items in optimal`);
+        if (config.targetSahniK !== 'random') constraints.push(`Sahni-k = ${config.targetSahniK}`);
+        warning = `Could not satisfy constraints (${constraints.join(', ')}) within budget [${config.budgetMin}, ${config.budgetMax}] after ${MAX_ATTEMPTS} seed attempts. Showing closest result.`;
     } else {
         capacity = capacityResult.capacity;
     }
@@ -250,6 +260,7 @@ function generateInstance(config) {
             noise_sd: config.correlation !== 'independent' ? config.noiseSd : null
         },
         ratio_spread: config.ratioSpread,
+        target_sahni_k: config.targetSahniK,
         items
     };
     
@@ -302,6 +313,7 @@ const elements = {
     alpha: document.getElementById('alpha'),
     noiseSd: document.getElementById('noise_sd'),
     optimalSize: document.getElementById('optimal_size'),
+    targetSahniK: document.getElementById('target_sahni_k'),
     ratioSpread: document.getElementById('ratio_spread'),
     generateBtn: document.getElementById('generate_btn'),
     downloadCsvBtn: document.getElementById('download_csv_btn'),
@@ -394,7 +406,8 @@ function getConfig() {
         alpha: parseFloat(elements.alpha.value),
         noiseSd: parseFloat(elements.noiseSd.value),
         optimalSize: elements.optimalSize.value,
-        ratioSpread: elements.ratioSpread.value
+        ratioSpread: elements.ratioSpread.value,
+        targetSahniK: elements.targetSahniK.value
     };
 }
 
@@ -668,14 +681,39 @@ function copyJSON() {
     if (!currentInstance) return;
     
     const json = JSON.stringify(currentInstance, null, 2);
-    navigator.clipboard.writeText(json).then(() => {
-        const btn = elements.copyJsonBtn;
-        const originalText = btn.textContent;
+    const btn = elements.copyJsonBtn;
+    const originalText = btn.textContent;
+    
+    // Try modern Clipboard API first, fall back to execCommand
+    function onSuccess() {
         btn.textContent = 'Copied!';
-        setTimeout(() => {
-            btn.textContent = originalText;
-        }, 1500);
-    });
+        setTimeout(() => { btn.textContent = originalText; }, 1500);
+    }
+    function onFail() {
+        btn.textContent = 'Failed';
+        setTimeout(() => { btn.textContent = originalText; }, 1500);
+    }
+    
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(json).then(onSuccess).catch(() => {
+            fallbackCopy(json) ? onSuccess() : onFail();
+        });
+    } else {
+        fallbackCopy(json) ? onSuccess() : onFail();
+    }
+}
+
+function fallbackCopy(text) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(textarea);
+    return ok;
 }
 
 // Event listeners

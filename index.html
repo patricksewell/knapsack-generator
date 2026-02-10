@@ -124,6 +124,19 @@
                         <option value="random">Random</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label for="target_sahni_k">Sahni-k <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Target Sahni-k: the minimum number of items to enumerate before greedy fills optimally.<br><strong style="color:#74b9ff">k=0:</strong> pure greedy is optimal (easy).<br><strong style="color:#fab1a0">Higher k:</strong> more items must be "guessed" — harder instance.<br>Capped at 6. Generation may take longer for high k.</div></span></label>
+                    <select id="target_sahni_k">
+                        <option value="random">Random</option>
+                        <option value="0">0</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                    </select>
+                </div>
                 <div class="form-group seed-inline">
                     <label for="seed">Seed <span style="font-weight:400;color:#aaa">(optional)</span></label>
                     <input type="text" id="seed" value="12345" placeholder="e.g. 12345">
