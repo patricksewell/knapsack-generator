@@ -101,6 +101,10 @@ h2 {
     margin-top: 2px;
 }
 
+.dist-row-inner {
+    /* no border — sits between first and last dist rows */
+}
+
 .dist-row-last {
     border-bottom: 1px solid #e9ecef;
     padding-bottom: 10px;
@@ -114,7 +118,7 @@ h2 {
     gap: 3px;
     font-size: 0.7rem;
     color: #aaa;
-    font-weight: 400;
+    font-weight: 100;
     margin-top: 2px;
     cursor: pointer;
     user-select: none;

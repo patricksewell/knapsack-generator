@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>0/1 Knapsack Instance Generator</title>
+    <title>Knapsack Problem Generator</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <h1>0/1 Knapsack Instance Generator</h1>
+        <h1>Knapsack Problem Generator</h1>
 
         <p class="intro">The <strong>0/1 knapsack problem</strong> models a simple but powerful choice environment: a decision-maker must pick a subset of items, each with a price and a value, to maximize total value without exceeding a fixed budget.</p>
 
@@ -54,7 +54,7 @@
                 </div>
             </div>
 
-            <div class="form-row dist-row">
+            <div class="form-row dist-row-inner">
                 <div class="form-group">
                     <label for="value_dist">Value Distribution</label>
                     <select id="value_dist">
@@ -80,9 +80,9 @@
                 </div>
             </div>
 
-            <div class="form-row dist-row dist-row-last">
+            <div class="form-row dist-row-last">
                 <div class="form-group">
-                    <label for="correlation">Correlation <span class="info-icon" id="corr_info" tabindex="0">ⓘ<div class="info-tooltip">Controls how price and value relate.<br><strong>Independent:</strong> drawn separately.<br><strong>Positive:</strong> value = α × price + noise. Costlier items tend to be more valuable — harder problem.<br><strong>Negative:</strong> value = α × (maxPrice − price) + noise. Cheaper items tend to be more valuable — easier problem.<br>Noise ~ Normal(0, noise_sd).</div></span></label>
+                    <label for="correlation">Correlation <span class="info-icon" id="corr_info" tabindex="0">ⓘ<div class="info-tooltip">Controls how price and value relate.<br><strong style="color:#74b9ff">Independent:</strong> drawn separately.<br><strong style="color:#55efc4">Positive:</strong> value = α × price + noise. Costlier items tend to be more valuable — harder problem.<br><strong style="color:#fab1a0">Negative:</strong> value = α × (maxPrice − price) + noise. Cheaper items tend to be more valuable — easier problem.<br>Noise ~ Normal(0, noise_sd).</div></span></label>
                     <select id="correlation">
                         <option value="independent">Independent</option>
                         <option value="positive">Positive Linear</option>
