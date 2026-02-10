@@ -47,6 +47,9 @@
         .legend-dot.low { background: rgba(52, 152, 219, 0.35); }
         .legend-dot.high { background: rgba(39, 174, 96, 0.35); }
         .legend-dot.both { background: rgba(155, 89, 182, 0.35); }
+        .target-section-label { font-size: 0.75rem; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: -4px; grid-column: 1 / -1; }
+        .target-section-label.low-label { color: #3498db; }
+        .target-section-label.high-label { color: #27ae60; }
     </style>
 </head>
 <body>
@@ -157,6 +160,52 @@
                         <option value="high">High (λ=2.0)</option>
                     </select>
                     <label class="int-checkbox"><input type="checkbox" id="integer_ratios"> integer ratios</label>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="target-section-label low-label">Low Budget Targets</div>
+                <div class="form-group">
+                    <label for="optimal_size_low">Optimal Items (Low)</label>
+                    <select id="optimal_size_low">
+                        <option value="random">Random</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="sahni_k_low">Sahni-k (Low)</label>
+                    <select id="sahni_k_low">
+                        <option value="random">Random</option>
+                        <option value="0">0</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="target-section-label high-label">High Budget Targets</div>
+                <div class="form-group">
+                    <label for="optimal_size_high">Optimal Items (High)</label>
+                    <select id="optimal_size_high">
+                        <option value="random">Random</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="sahni_k_high">Sahni-k (High)</label>
+                    <select id="sahni_k_high">
+                        <option value="random">Random</option>
+                        <option value="0">0</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                    </select>
                 </div>
             </div>
 

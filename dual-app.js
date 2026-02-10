@@ -64,8 +64,8 @@ function distName(type, isInt) {
 const CORRELATION_NAMES = { 'independent': 'Independent', 'positive': 'PositiveLinear', 'negative': 'NegativeLinear' };
 
 // Generate items (identical to main generator)
-function generateItems(config) {
-    const rng = mulberry32(hashSeed(config.seed));
+function generateItems(config, seedStr) {
+    const rng = mulberry32(hashSeed(seedStr));
     const weightSampler = getSampler(config.weightDist, config.weightParams, config.weightInt);
     const valueSampler = getSampler(config.valueDist, config.valueParams, config.valueInt);
 
@@ -218,6 +218,10 @@ const el = {
     noiseSd: document.getElementById('noise_sd'),
     ratioSpread: document.getElementById('ratio_spread'),
     integerRatios: document.getElementById('integer_ratios'),
+    optimalSizeLow: document.getElementById('optimal_size_low'),
+    optimalSizeHigh: document.getElementById('optimal_size_high'),
+    sahniKLow: document.getElementById('sahni_k_low'),
+    sahniKHigh: document.getElementById('sahni_k_high'),
     generateBtn: document.getElementById('generate_btn'),
     downloadJsonBtn: document.getElementById('download_json_btn'),
     copyJsonBtn: document.getElementById('copy_json_btn'),
@@ -276,7 +280,11 @@ function getConfig() {
         alpha: parseFloat(el.alpha.value),
         noiseSd: parseFloat(el.noiseSd.value),
         ratioSpread: el.ratioSpread.value,
-        integerRatios: el.integerRatios.checked
+        integerRatios: el.integerRatios.checked,
+        optimalSizeLow: el.optimalSizeLow.value,
+        optimalSizeHigh: el.optimalSizeHigh.value,
+        sahniKLow: el.sahniKLow.value,
+        sahniKHigh: el.sahniKHigh.value
     };
 }
 
@@ -320,6 +328,30 @@ function renderOptimalPanel(container, optimal, sahniK, budget) {
     container.innerHTML = html;
 }
 
+// Populate optimal-size dropdowns based on current n_items
+function updateOptimalSizeOptions() {
+    const n = parseInt(el.nItems.value) || 1;
+    [el.optimalSizeLow, el.optimalSizeHigh].forEach(select => {
+        const current = select.value;
+        select.innerHTML = '<option value="random">Random</option>';
+        for (let i = 1; i < n; i++) {
+            select.innerHTML += `<option value="${i}"${current === String(i) ? ' selected' : ''}>${i}</option>`;
+        }
+    });
+}
+
+// Check whether a single budget's solution matches its constraints
+function checkConstraints(items, budget, targetOptSize, targetSahniK) {
+    const sol = solveKnapsack(items, budget);
+    if (targetOptSize !== 'random' && sol.count !== parseInt(targetOptSize)) return null;
+    let sahniK = null;
+    if (targetSahniK !== 'random') {
+        sahniK = computeSahniK(items, budget, sol.value);
+        if (sahniK !== parseInt(targetSahniK)) return null;
+    }
+    return { sol, sahniK };
+}
+
 function generate() {
     const config = getConfig();
     if (config.budgetLow > config.budgetHigh) {
@@ -330,28 +362,86 @@ function generate() {
     el.generateBtn.textContent = 'Generating…';
     el.generateBtn.disabled = true;
 
+    const hasTargets = config.optimalSizeLow !== 'random' || config.sahniKLow !== 'random'
+                    || config.optimalSizeHigh !== 'random' || config.sahniKHigh !== 'random';
+    const MAX_ATTEMPTS = 10000;
+    const baseSeed = config.seed;
+
     setTimeout(() => {
-        const items = generateItems(config);
+        let items, bLow, bHigh, optLow, optHigh, sahniLow, sahniHigh;
+        let usedSeed = baseSeed;
+        let warning = null;
+        let found = false;
+
+        for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            usedSeed = attempt === 0 ? baseSeed : baseSeed + '_' + attempt;
+            items = generateItems(config, usedSeed);
+            const sumWeights = items.reduce((s, it) => s + it.weight, 0);
+
+            bLow = Math.max(1, Math.min(config.budgetLow, sumWeights - 1));
+            bHigh = Math.max(1, Math.min(config.budgetHigh, sumWeights - 1));
+
+            // Check low-budget constraints
+            const lowResult = checkConstraints(items, bLow, config.optimalSizeLow, config.sahniKLow);
+            if (!lowResult) continue;
+
+            // Check high-budget constraints
+            const highResult = checkConstraints(items, bHigh, config.optimalSizeHigh, config.sahniKHigh);
+            if (!highResult) continue;
+
+            // All constraints satisfied
+            optLow = lowResult.sol;
+            optHigh = highResult.sol;
+            sahniLow = lowResult.sahniK;
+            sahniHigh = highResult.sahniK;
+            found = true;
+            break;
+        }
+
+        if (!found) {
+            // Fallback: use base seed, solve without constraints
+            usedSeed = baseSeed;
+            items = generateItems(config, usedSeed);
+            const sumWeights = items.reduce((s, it) => s + it.weight, 0);
+            bLow = Math.max(1, Math.min(config.budgetLow, sumWeights - 1));
+            bHigh = Math.max(1, Math.min(config.budgetHigh, sumWeights - 1));
+            optLow = solveKnapsack(items, bLow);
+            optHigh = solveKnapsack(items, bHigh);
+            sahniLow = null; sahniHigh = null;
+
+            const constraints = [];
+            if (config.optimalSizeLow !== 'random') constraints.push(`low optimal = ${config.optimalSizeLow} items`);
+            if (config.sahniKLow !== 'random') constraints.push(`low Sahni-k = ${config.sahniKLow}`);
+            if (config.optimalSizeHigh !== 'random') constraints.push(`high optimal = ${config.optimalSizeHigh} items`);
+            if (config.sahniKHigh !== 'random') constraints.push(`high Sahni-k = ${config.sahniKHigh}`);
+            const suggestions = ['try a different seed', 'relax some constraints', 'change distribution parameters'];
+            warning = `Could not satisfy constraints (${constraints.join(', ')}) after ${MAX_ATTEMPTS} attempts. Showing result for base seed. Try to: ${suggestions.join('; ')}.`;
+        }
+
+        // Compute Sahni-k if not already done
+        if (sahniLow === null) sahniLow = computeSahniK(items, bLow, optLow.value);
+        if (sahniHigh === null) sahniHigh = computeSahniK(items, bHigh, optHigh.value);
+        if (!optLow) optLow = solveKnapsack(items, bLow);
+        if (!optHigh) optHigh = solveKnapsack(items, bHigh);
+
         const sumWeights = items.reduce((s, it) => s + it.weight, 0);
-
-        // Clamp budgets
-        let bLow = Math.min(config.budgetLow, sumWeights - 1);
-        let bHigh = Math.min(config.budgetHigh, sumWeights - 1);
-        if (bLow < 1) bLow = 1;
-        if (bHigh < 1) bHigh = 1;
-
-        const optLow = solveKnapsack(items, bLow);
-        const optHigh = solveKnapsack(items, bHigh);
-        const sahniLow = computeSahniK(items, bLow, optLow.value);
-        const sahniHigh = computeSahniK(items, bHigh, optHigh.value);
-
         const sumValues = items.reduce((s, it) => s + it.value, 0);
 
         // Summary stats
-        el.statsGrid.innerHTML = [
+        let statsHtml = [
             { label: 'Sum of Prices', value: sumWeights },
             { label: 'Sum of Values', value: sumValues }
         ].map(s => `<div class="stat-card"><div class="label">${s.label}</div><div class="value">${s.value}</div></div>`).join('');
+
+        if (usedSeed !== baseSeed) {
+            statsHtml += `<div class="stat-card" title="Seed was adjusted to satisfy constraints."><div class="label">Seed Used</div><div class="value">${usedSeed}</div></div>`;
+        }
+
+        if (warning) {
+            statsHtml += `<div class="stat-card warning" style="grid-column: 1 / -1;"><div class="warning-text">⚠️ ${warning}</div></div>`;
+        }
+
+        el.statsGrid.innerHTML = statsHtml;
 
         renderOptimalPanel(el.optimalLow, optLow, sahniLow, bLow);
         renderOptimalPanel(el.optimalHigh, optHigh, sahniHigh, bHigh);
@@ -375,9 +465,14 @@ function generate() {
         currentResult = {
             problem: '0/1 knapsack (dual budget)',
             n_items: config.nItems,
-            seed: config.seed,
+            seed: usedSeed,
+            seed_requested: baseSeed,
             budget_low: bLow,
             budget_high: bHigh,
+            target_optimal_size_low: config.optimalSizeLow,
+            target_optimal_size_high: config.optimalSizeHigh,
+            target_sahni_k_low: config.sahniKLow,
+            target_sahni_k_high: config.sahniKHigh,
             price_dist: { name: distName(config.weightDist, config.weightInt), params: config.weightParams },
             value_dist: config.correlation === 'independent' ? { name: distName(config.valueDist, config.valueInt), params: config.valueParams } : null,
             correlation: { mode: CORRELATION_NAMES[config.correlation], alpha: config.correlation !== 'independent' ? config.alpha : null, noise_sd: config.correlation !== 'independent' ? config.noiseSd : null },
@@ -387,6 +482,8 @@ function generate() {
             optimal_high: { budget: bHigh, value: optHigh.value, weight: optHigh.weight, count: optHigh.count, sahni_k: sahniHigh, item_ids: optHigh.items.map(it => it.id) },
             items
         };
+
+        if (warning) currentResult.warning = warning;
 
         el.outputSection.classList.remove('hidden');
         el.downloadJsonBtn.disabled = false;
@@ -436,6 +533,7 @@ function fallbackCopy(text) {
 el.weightDist.addEventListener('change', () => updateDistParams('weight_dist', 'weight_params'));
 el.valueDist.addEventListener('change', () => updateDistParams('value_dist', 'value_params'));
 el.correlation.addEventListener('change', updateCorrelationParams);
+el.nItems.addEventListener('input', updateOptimalSizeOptions);
 el.generateBtn.addEventListener('click', generate);
 el.downloadJsonBtn.addEventListener('click', downloadJSON);
 el.copyJsonBtn.addEventListener('click', copyJSON);
@@ -446,3 +544,4 @@ el.copyJsonBtn.disabled = true;
 updateDistParams('weight_dist', 'weight_params');
 updateDistParams('value_dist', 'value_params');
 updateCorrelationParams();
+updateOptimalSizeOptions();
