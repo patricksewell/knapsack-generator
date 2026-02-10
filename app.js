@@ -135,6 +135,22 @@ function generateInstance(config) {
         items[i].value = Math.max(config.valueInt ? 1 : 0.01, value);
     }
     
+    // Apply ratio spread (compress/stretch V/P ratios around their mean)
+    if (config.ratioSpread !== 'medium') {
+        const lambda = config.ratioSpread === 'low' ? 0.3 : 2.0;
+        const ratios = items.map(it => it.value / it.weight);
+        const meanRatio = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+        
+        for (let i = 0; i < items.length; i++) {
+            const newRatio = meanRatio + lambda * (ratios[i] - meanRatio);
+            // Ensure ratio stays positive
+            const clampedRatio = Math.max(0.01, newRatio);
+            let newValue = clampedRatio * items[i].weight;
+            newValue = config.valueInt ? Math.max(1, Math.round(newValue)) : Math.max(0.01, parseFloat(newValue.toFixed(2)));
+            items[i].value = newValue;
+        }
+    }
+    
     // Enforce non-trivial: capacity must be < sum of weights
     const sumWeights = items.reduce((s, it) => s + it.weight, 0);
     let capacity = config.capacity;
@@ -168,6 +184,7 @@ function generateInstance(config) {
             alpha: config.correlation !== 'independent' ? config.alpha : null,
             noise_sd: config.correlation !== 'independent' ? config.noiseSd : null
         },
+        ratio_spread: config.ratioSpread,
         items
     };
     
@@ -264,6 +281,7 @@ const elements = {
     alpha: document.getElementById('alpha'),
     noiseSd: document.getElementById('noise_sd'),
     optimalSize: document.getElementById('optimal_size'),
+    ratioSpread: document.getElementById('ratio_spread'),
     generateBtn: document.getElementById('generate_btn'),
     downloadCsvBtn: document.getElementById('download_csv_btn'),
     downloadJsonBtn: document.getElementById('download_json_btn'),
@@ -353,7 +371,8 @@ function getConfig() {
         correlation: elements.correlation.value,
         alpha: parseFloat(elements.alpha.value),
         noiseSd: parseFloat(elements.noiseSd.value),
-        optimalSize: elements.optimalSize.value
+        optimalSize: elements.optimalSize.value,
+        ratioSpread: elements.ratioSpread.value
     };
 }
 
@@ -403,6 +422,71 @@ function solveKnapsack(items, capacity) {
     };
 }
 
+// Compute Sahni-k: minimum k such that enumerating all subsets of size ≤ k
+// and greedily filling the rest achieves the optimal value.
+function computeSahniK(items, capacity, optimalValue) {
+    const n = items.length;
+    // Precompute items sorted by value/price ratio (descending) for greedy
+    const sortedIndices = items.map((_, i) => i).sort((a, b) =>
+        (items[b].value / items[b].weight) - (items[a].value / items[a].weight)
+    );
+    
+    // Greedy fill: given a set of forced-in indices and remaining capacity,
+    // greedily add items by V/P ratio
+    function greedyFill(forced, remCap) {
+        let val = 0;
+        for (const idx of sortedIndices) {
+            if (forced.has(idx)) continue;
+            if (items[idx].weight <= remCap) {
+                val += items[idx].value;
+                remCap -= items[idx].weight;
+            }
+        }
+        return val;
+    }
+    
+    // k=0: pure greedy
+    const greedyVal = greedyFill(new Set(), capacity);
+    if (greedyVal >= optimalValue) return 0;
+    
+    // For k=1,2,...  enumerate subsets of size k
+    // Use iterative deepening to keep it manageable
+    for (let k = 1; k <= Math.min(n, 6); k++) {
+        // Enumerate all subsets of size k
+        const subset = new Array(k);
+        let found = false;
+        
+        function enumerate(depth, start) {
+            if (found) return;
+            if (depth === k) {
+                // Check this subset
+                const forced = new Set(subset);
+                let forcedWeight = 0, forcedValue = 0;
+                for (const idx of subset) {
+                    forcedWeight += items[idx].weight;
+                    forcedValue += items[idx].value;
+                }
+                if (forcedWeight > capacity) return;
+                const totalVal = forcedValue + greedyFill(forced, capacity - forcedWeight);
+                if (totalVal >= optimalValue) {
+                    found = true;
+                }
+                return;
+            }
+            for (let i = start; i < n; i++) {
+                subset[depth] = i;
+                enumerate(depth + 1, i + 1);
+                if (found) return;
+            }
+        }
+        
+        enumerate(0, 0);
+        if (found) return k;
+    }
+    
+    return '> 6'; // Safety cap for large instances
+}
+
 // Render statistics
 function renderStats(stats) {
     const statItems = [
@@ -421,11 +505,12 @@ function renderStats(stats) {
 }
 
 // Render optimal solution stats
-function renderOptimal(optimal) {
+function renderOptimal(optimal, sahniK) {
     const statItems = [
         { label: 'Items Selected', value: `${optimal.count}` },
         { label: 'Total Price', value: optimal.weight },
-        { label: 'Total Value', value: optimal.value }
+        { label: 'Total Value', value: optimal.value },
+        { label: 'Sahni-k', value: sahniK, title: 'Minimum k for Sahni\'s algorithm: enumerate all subsets of size ≤ k, greedily fill the rest. k=0 means pure greedy is optimal. Higher k = harder instance.' }
     ];
     
     // Build item list text
@@ -483,9 +568,10 @@ function generate() {
     currentInstance = generateInstance(config);
     const stats = calculateStats(currentInstance);
     const optimal = solveKnapsack(currentInstance.items, currentInstance.budget);
+    const sahniK = computeSahniK(currentInstance.items, currentInstance.budget, optimal.value);
     
     renderStats(stats);
-    renderOptimal(optimal);
+    renderOptimal(optimal, sahniK);
     renderPreview(currentInstance.items);
     
     elements.outputSection.classList.remove('hidden');
