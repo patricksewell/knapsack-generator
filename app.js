@@ -99,9 +99,9 @@ const CORRELATION_NAMES = {
     'negative': 'NegativeLinear'
 };
 
-// Generate knapsack instance
-function generateInstance(config) {
-    const rng = mulberry32(hashSeed(config.seed));
+// Generate raw items (no capacity logic)
+function generateItems(config, seedStr) {
+    const rng = mulberry32(hashSeed(seedStr));
     
     const weightSampler = getSampler(config.weightDist, config.weightParams, config.weightInt);
     const valueSampler = getSampler(config.valueDist, config.valueParams, config.valueInt);
@@ -143,7 +143,6 @@ function generateInstance(config) {
         
         for (let i = 0; i < items.length; i++) {
             const newRatio = meanRatio + lambda * (ratios[i] - meanRatio);
-            // Ensure ratio stays positive
             const clampedRatio = Math.max(0.01, newRatio);
             let newValue = clampedRatio * items[i].weight;
             newValue = config.valueInt ? Math.max(1, Math.round(newValue)) : Math.max(0.01, parseFloat(newValue.toFixed(2)));
@@ -151,18 +150,82 @@ function generateInstance(config) {
         }
     }
     
-    // Enforce non-trivial: capacity must be < sum of weights
+    return items;
+}
+
+// Find a valid capacity within [budgetMin, budgetMax] for items,
+// optionally targeting a specific optimal solution size.
+// Returns { capacity, found } or null if no valid capacity exists in range.
+function findCapacityInRange(items, budgetMin, budgetMax, targetOptSize) {
     const sumWeights = items.reduce((s, it) => s + it.weight, 0);
-    let capacity = config.capacity;
-    if (capacity >= sumWeights) {
-        capacity = sumWeights - 1;
-    }
-    if (capacity < 1) capacity = 1;
+    // Clamp range to valid bounds
+    const lo = Math.max(1, budgetMin);
+    const hi = Math.min(budgetMax, sumWeights - 1);
     
-    // If a target optimal size is requested, binary-search the capacity
-    if (config.optimalSize !== 'random') {
-        const target = parseInt(config.optimalSize);
-        capacity = findCapacityForOptimalSize(items, target, sumWeights);
+    if (lo > hi) return null; // range is infeasible
+    
+    if (targetOptSize === 'random') {
+        // No target — pick midpoint of range
+        const cap = Math.round((lo + hi) / 2);
+        return { capacity: cap, found: true };
+    }
+    
+    const target = parseInt(targetOptSize);
+    
+    // Scan the budget range for a capacity that gives exactly 'target' items
+    // Use binary search first to find boundary, then linear scan nearby
+    
+    // Quick check: try a few strategic points first
+    const candidates = [Math.round((lo + hi) / 2), lo, hi];
+    for (const c of candidates) {
+        if (c >= lo && c <= hi) {
+            const sol = solveKnapsack(items, c);
+            if (sol.count === target) return { capacity: c, found: true };
+        }
+    }
+    
+    // Full scan — for typical ranges this is fast
+    for (let c = lo; c <= hi; c++) {
+        const sol = solveKnapsack(items, c);
+        if (sol.count === target) return { capacity: c, found: true };
+    }
+    
+    return null; // No capacity in range gives target optimal size
+}
+
+// Main generation: iterate seeds until constraints are satisfied
+function generateInstance(config) {
+    const baseSeed = config.seed;
+    const MAX_ATTEMPTS = 200;
+    let usedSeed = baseSeed;
+    let items, capacityResult;
+    
+    // Attempt with base seed first, then variations
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        usedSeed = attempt === 0 ? baseSeed : baseSeed + '_' + attempt;
+        items = generateItems(config, usedSeed);
+        capacityResult = findCapacityInRange(
+            items, config.budgetMin, config.budgetMax, config.optimalSize
+        );
+        
+        if (capacityResult && capacityResult.found) break;
+    }
+    
+    // Fallback: if no solution found, use the last generated items
+    // with the best capacity we can manage
+    let capacity;
+    let warning = null;
+    if (!capacityResult || !capacityResult.found) {
+        // Fall back: use base seed items, clamp capacity to range
+        items = generateItems(config, baseSeed);
+        usedSeed = baseSeed;
+        const sumWeights = items.reduce((s, it) => s + it.weight, 0);
+        capacity = Math.min(config.budgetMax, sumWeights - 1);
+        capacity = Math.max(config.budgetMin, capacity);
+        if (capacity < 1) capacity = 1;
+        warning = `Could not find a budget in [${config.budgetMin}, ${config.budgetMax}] with exactly ${config.optimalSize} items in the optimal solution after ${MAX_ATTEMPTS} attempts. Showing closest result.`;
+    } else {
+        capacity = capacityResult.capacity;
     }
     
     // Build output object with full metadata
@@ -170,7 +233,9 @@ function generateInstance(config) {
         problem: '0/1 knapsack',
         n_items: config.nItems,
         budget: capacity,
-        seed: config.seed,
+        budget_range: [config.budgetMin, config.budgetMax],
+        seed: usedSeed,
+        seed_requested: baseSeed,
         price_dist: {
             name: distName(config.weightDist, config.weightInt),
             params: config.weightParams
@@ -188,57 +253,9 @@ function generateInstance(config) {
         items
     };
     
+    if (warning) result.warning = warning;
+    
     return result;
-}
-
-// Binary-search capacity so the optimal solution has exactly 'target' items
-function findCapacityForOptimalSize(items, target, sumWeights) {
-    // Sort items by weight to get a reasonable starting range
-    const sorted = [...items].sort((a, b) => a.weight - b.weight);
-    
-    // Lower bound: sum of 'target' lightest items (minimum capacity that could fit target items)
-    let lo = 0;
-    for (let i = 0; i < Math.min(target, sorted.length); i++) lo += sorted[i].weight;
-    
-    let hi = sumWeights - 1;
-    let bestCap = lo;
-    
-    // Binary search: find the smallest capacity where optimal count >= target
-    while (lo <= hi) {
-        const mid = Math.floor((lo + hi) / 2);
-        const sol = solveKnapsack(items, mid);
-        
-        if (sol.count >= target) {
-            bestCap = mid;
-            hi = mid - 1;
-        } else {
-            lo = mid + 1;
-        }
-    }
-    
-    // Verify and fine-tune: walk down from bestCap to find exact boundary
-    // where count == target (not more, not fewer)
-    // First try bestCap
-    let sol = solveKnapsack(items, bestCap);
-    if (sol.count === target) return bestCap;
-    
-    // If count > target at bestCap, decrease until count == target
-    if (sol.count > target) {
-        for (let c = bestCap - 1; c >= 1; c--) {
-            sol = solveKnapsack(items, c);
-            if (sol.count === target) return c;
-            if (sol.count < target) break;
-        }
-    }
-    
-    // If we still haven't found exact match, search upward
-    for (let c = bestCap; c < sumWeights; c++) {
-        sol = solveKnapsack(items, c);
-        if (sol.count === target) return c;
-    }
-    
-    // Fallback: return bestCap (closest we could get)
-    return bestCap;
 }
 
 // Calculate statistics
@@ -252,14 +269,18 @@ function calculateStats(instance) {
         sumWeights,
         sumValues,
         capacity: instance.budget,
-        capacityRatio: (instance.budget / sumWeights * 100).toFixed(1)
+        budgetRange: instance.budget_range,
+        capacityRatio: (instance.budget / sumWeights * 100).toFixed(1),
+        seedUsed: instance.seed,
+        seedRequested: instance.seed_requested
     };
 }
 
 // DOM Elements
 const elements = {
     nItems: document.getElementById('n_items'),
-    capacity: document.getElementById('capacity'),
+    budgetMin: document.getElementById('budget_min'),
+    budgetMax: document.getElementById('budget_max'),
     seed: document.getElementById('seed'),
     weightDist: document.getElementById('weight_dist'),
     valueDist: document.getElementById('value_dist'),
@@ -360,7 +381,8 @@ function getConfig() {
     
     return {
         nItems: parseInt(elements.nItems.value),
-        capacity: parseInt(elements.capacity.value),
+        budgetMin: parseInt(elements.budgetMin.value),
+        budgetMax: parseInt(elements.budgetMax.value),
         seed: elements.seed.value,
         weightDist,
         weightParams,
@@ -491,10 +513,15 @@ function computeSahniK(items, capacity, optimalValue) {
 function renderStats(stats) {
     const statItems = [
         { label: 'Budget', value: stats.capacity },
+        { label: 'Budget Range', value: `${stats.budgetRange[0]}–${stats.budgetRange[1]}` },
         { label: 'Sum of Prices', value: stats.sumWeights },
         { label: 'Sum of Values', value: stats.sumValues },
         { label: 'Budget Ratio', value: `${stats.capacityRatio}%`, title: 'Budget as a percentage of total price. Always below 100% — not all items can be bought.' }
     ];
+    
+    if (stats.seedUsed !== stats.seedRequested) {
+        statItems.push({ label: 'Seed Used', value: stats.seedUsed, title: 'Seed was adjusted to satisfy budget range + optimal size constraints.' });
+    }
     
     elements.statsGrid.innerHTML = statItems.map(stat => `
         <div class="stat-card" ${stat.title ? `title="${stat.title}"` : ''}>
@@ -565,19 +592,40 @@ function renderPreview(items) {
 // Generate instance and update UI
 function generate() {
     const config = getConfig();
-    currentInstance = generateInstance(config);
-    const stats = calculateStats(currentInstance);
-    const optimal = solveKnapsack(currentInstance.items, currentInstance.budget);
-    const sahniK = computeSahniK(currentInstance.items, currentInstance.budget, optimal.value);
+    // Validate budget range
+    if (config.budgetMin > config.budgetMax) {
+        alert('Min Budget must be ≤ Max Budget.');
+        return;
+    }
     
-    renderStats(stats);
-    renderOptimal(optimal, sahniK);
-    renderPreview(currentInstance.items);
+    elements.generateBtn.textContent = 'Generating…';
+    elements.generateBtn.disabled = true;
     
-    elements.outputSection.classList.remove('hidden');
-    elements.downloadCsvBtn.disabled = false;
-    elements.downloadJsonBtn.disabled = false;
-    elements.copyJsonBtn.disabled = false;
+    // Use setTimeout to let UI update before heavy computation
+    setTimeout(() => {
+        currentInstance = generateInstance(config);
+        const stats = calculateStats(currentInstance);
+        const optimal = solveKnapsack(currentInstance.items, currentInstance.budget);
+        const sahniK = computeSahniK(currentInstance.items, currentInstance.budget, optimal.value);
+        
+        renderStats(stats);
+        if (currentInstance.warning) {
+            elements.statsGrid.innerHTML += `
+                <div class="stat-card warning" style="grid-column: 1 / -1;">
+                    <div class="warning-text">⚠️ ${currentInstance.warning}</div>
+                </div>
+            `;
+        }
+        renderOptimal(optimal, sahniK);
+        renderPreview(currentInstance.items);
+        
+        elements.outputSection.classList.remove('hidden');
+        elements.downloadCsvBtn.disabled = false;
+        elements.downloadJsonBtn.disabled = false;
+        elements.copyJsonBtn.disabled = false;
+        elements.generateBtn.textContent = 'Generate';
+        elements.generateBtn.disabled = false;
+    }, 10);
 }
 
 // Download helpers

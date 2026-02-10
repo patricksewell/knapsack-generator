@@ -28,17 +28,62 @@ h1 {
     font-size: 1.5rem;
 }
 
-.intro {
-    font-size: 0.85rem;
-    color: #8a96a3;
-    text-align: center;
+/* Collapsible description */
+.description-toggle {
     max-width: 720px;
-    margin: 0 auto 6px;
-    line-height: 1.45;
+    margin: 0 auto 14px;
+    text-align: center;
 }
 
-.intro:last-of-type {
-    margin-bottom: 16px;
+.desc-btn {
+    background: none;
+    border: 1px solid #dfe6e9;
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 0.85rem;
+    color: #636e72;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.desc-btn:hover {
+    background: #f8f9fa;
+    color: #2c3e50;
+    border-color: #b2bec3;
+}
+
+.desc-arrow {
+    font-size: 0.65rem;
+    transition: transform 0.2s;
+    display: inline-block;
+}
+
+.description-toggle.open .desc-arrow {
+    transform: rotate(90deg);
+}
+
+.desc-content {
+    display: none;
+    text-align: center;
+    margin-top: 10px;
+}
+
+.description-toggle.open .desc-content {
+    display: block;
+}
+
+.desc-content p {
+    font-size: 0.85rem;
+    color: #8a96a3;
+    line-height: 1.45;
+    margin-bottom: 6px;
+}
+
+.desc-content p:last-child {
+    margin-bottom: 0;
 }
 
 h2 {

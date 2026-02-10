@@ -10,11 +10,16 @@
     <div class="container">
         <h1>Knapsack Problem Generator</h1>
 
-        <p class="intro">The <strong>0/1 knapsack problem</strong> models a simple but powerful choice environment: a decision-maker must pick a subset of items, each with a price and a value, to maximize total value without exceeding a fixed budget.</p>
-
-        <p class="intro">For behavioral economists, this structure is especially useful because it controls for preferences and provides a distance to an optimal solution. It can be used to study, for example, how people allocate scarce resources across competing options; whether they rely on heuristics rather than optimization; how limited attention or choice overload change decision quality; and how decisions respond to framing, time pressure, incentives, or complexity.</p>
-
-        <p class="intro">Feel free to generate your own knapsack instances below, have fun! You can also set a seed for full reproducibility.</p>
+        <div class="description-toggle">
+            <button class="desc-btn" id="desc_toggle" onclick="this.parentElement.classList.toggle('open')">
+                <span class="desc-arrow">▶</span> What is this?
+            </button>
+            <div class="desc-content">
+                <p>The <strong>0/1 knapsack problem</strong> models a simple but powerful choice environment: a decision-maker must pick a subset of items, each with a price and a value, to maximize total value without exceeding a fixed budget.</p>
+                <p>For behavioral economists, this structure is especially useful because it controls for preferences and provides a distance to an optimal solution. It can be used to study, for example, how people allocate scarce resources across competing options; whether they rely on heuristics rather than optimization; how limited attention or choice overload change decision quality; and how decisions respond to framing, time pressure, incentives, or complexity.</p>
+                <p>Feel free to generate your own knapsack instances below, have fun! You can also set a seed for full reproducibility.</p>
+            </div>
+        </div>
 
         <div class="form-section">
             <div class="form-row">
@@ -23,8 +28,12 @@
                     <input type="number" id="n_items" value="12" min="1">
                 </div>
                 <div class="form-group">
-                    <label for="capacity">Budget</label>
-                    <input type="number" id="capacity" value="100" min="1">
+                    <label for="budget_min">Min Budget</label>
+                    <input type="number" id="budget_min" value="50" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="budget_max">Max Budget</label>
+                    <input type="number" id="budget_max" value="150" min="1">
                 </div>
             </div>
 
