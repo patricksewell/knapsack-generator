@@ -202,12 +202,12 @@ function greedyValue(items, capacity) {
     return totalValue;
 }
 
-// Count feasible subsets with value >= alphaPercent% of optimal (brute-force bitmask)
-function countNearOptimalBundles(items, capacity, optValue, alphaPercent) {
+// Count feasible subsets and near-optimal subsets (brute-force bitmask, n<=20)
+function countBundleStats(items, capacity, optValue, alphaPercent) {
     if (alphaPercent === undefined) alphaPercent = 90;
     const n = items.length;
     const threshold = alphaPercent * optValue;
-    let count = 0;
+    let feasible = 0, n90 = 0;
     const total = 1 << n;
     for (let mask = 1; mask < total; mask++) {
         let w = 0, v = 0;
@@ -217,11 +217,12 @@ function countNearOptimalBundles(items, capacity, optValue, alphaPercent) {
                 v += items[i].value;
             }
         }
-        if (w <= capacity && v * 100 >= threshold) {
-            count++;
+        if (w <= capacity) {
+            feasible++;
+            if (v * 100 >= threshold) n90++;
         }
     }
-    return count;
+    return { feasible, n90 };
 }
 
 // ============================================================
@@ -332,7 +333,7 @@ function getConfig() {
     };
 }
 
-function renderOptimalPanel(container, optimal, sahniK, budget, greedyRatio, n90) {
+function renderOptimalPanel(container, optimal, sahniK, budget, greedyRatio, n90, feasibleCount) {
     const INLINE_LIMIT = 8;
     const itemChips = optimal.items.map(it =>
         `<span class="item-chip">${it.id} <small>(${it.weight},${it.value})</small></span>`
@@ -350,8 +351,12 @@ function renderOptimalPanel(container, optimal, sahniK, budget, greedyRatio, n90
     if (greedyRatio !== null && greedyRatio !== undefined) {
         stats.push({ label: 'Greedy Performance', value: `${(greedyRatio * 100).toFixed(1)}%`, title: 'Greedy solution value as % of optimal.' });
     }
+    if (feasibleCount !== null && feasibleCount !== undefined) {
+        stats.push({ label: 'Feasible Combinations', value: feasibleCount.toLocaleString(), title: 'Total item subsets fitting within this budget.' });
+    }
     if (n90 !== null && n90 !== undefined) {
-        stats.push({ label: 'N90 (Forgiveness)', value: n90, title: 'Feasible subsets achieving \u2265 90% of optimal.' });
+        const shareStr = feasibleCount > 0 ? ` (${(n90 / feasibleCount * 100).toFixed(1)}%)` : '';
+        stats.push({ label: 'N90 (Forgiveness)', value: `${n90}${shareStr}`, title: 'Feasible subsets achieving \u2265 90% of optimal, and their share of all feasible combinations.' });
     }
 
     let html = stats.map(s => `
@@ -468,6 +473,7 @@ function generate() {
     setTimeout(() => {
         let items, bLow, bHigh, optLow, optHigh, sahniLow, sahniHigh;
         let greedyRatioLow = null, greedyRatioHigh = null, n90Low = null, n90High = null;
+        let feasibleLow = null, feasibleHigh = null;
         let usedSeed = baseSeed;
         let warning = null;
         let found = false;
@@ -504,9 +510,9 @@ function generate() {
 
             // Forgiveness constraint — check BOTH budgets
             if (forgivenessActive && canBruteForceN90) {
-                const n90L = countNearOptimalBundles(items, capLow, solLow.value, 90);
-                const n90H = countNearOptimalBundles(items, capHigh, solHigh.value, 90);
-                if (n90L > forgivenessCap || n90H > forgivenessCap) continue;
+                const bsL = countBundleStats(items, capLow, solLow.value, 90);
+                const bsH = countBundleStats(items, capHigh, solHigh.value, 90);
+                if (bsL.n90 > forgivenessCap || bsH.n90 > forgivenessCap) continue;
             }
 
             // Both satisfied
@@ -550,8 +556,12 @@ function generate() {
         greedyRatioLow = optLow.value > 0 ? greedyValue(items, bLow) / optLow.value : 0;
         greedyRatioHigh = optHigh.value > 0 ? greedyValue(items, bHigh) / optHigh.value : 0;
         if (canBruteForceN90) {
-            n90Low = countNearOptimalBundles(items, bLow, optLow.value, 90);
-            n90High = countNearOptimalBundles(items, bHigh, optHigh.value, 90);
+            const bsLow = countBundleStats(items, bLow, optLow.value, 90);
+            const bsHigh = countBundleStats(items, bHigh, optHigh.value, 90);
+            n90Low = bsLow.n90;
+            n90High = bsHigh.n90;
+            feasibleLow = bsLow.feasible;
+            feasibleHigh = bsHigh.feasible;
         }
 
         const sumWeights = items.reduce((s, it) => s + it.weight, 0);
@@ -571,8 +581,8 @@ function generate() {
 
         el.statsGrid.innerHTML = statsHtml;
 
-        renderOptimalPanel(el.optimalLow, optLow, sahniLow, bLow, greedyRatioLow, n90Low);
-        renderOptimalPanel(el.optimalHigh, optHigh, sahniHigh, bHigh, greedyRatioHigh, n90High);
+        renderOptimalPanel(el.optimalLow, optLow, sahniLow, bLow, greedyRatioLow, n90Low, feasibleLow);
+        renderOptimalPanel(el.optimalHigh, optHigh, sahniHigh, bHigh, greedyRatioHigh, n90High, feasibleHigh);
 
         // Preview table with dual highlighting
         const lowIds = new Set(optLow.items.map(it => it.id));

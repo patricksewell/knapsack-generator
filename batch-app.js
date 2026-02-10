@@ -251,19 +251,22 @@ function greedyValue(items, capacity) {
     return total;
 }
 
-// Count feasible subsets with value >= alphaPercent% of optimal (brute-force, n<=20)
-function countNearOptimalBundles(items, capacity, optValue, alphaPercent) {
+// Count feasible subsets and near-optimal subsets (brute-force bitmask, n<=20)
+function countBundleStats(items, capacity, optValue, alphaPercent) {
     const n = items.length;
-    let count = 0;
+    let feasible = 0, n90 = 0;
     const limit = 1 << n;
     for (let mask = 1; mask < limit; mask++) {
         let w = 0, v = 0;
         for (let j = 0; j < n; j++) {
             if (mask & (1 << j)) { w += items[j].weight; v += items[j].value; }
         }
-        if (w <= capacity && v * 100 >= alphaPercent * optValue) count++;
+        if (w <= capacity) {
+            feasible++;
+            if (v * 100 >= alphaPercent * optValue) n90++;
+        }
     }
-    return count;
+    return { feasible, n90 };
 }
 
 // ============================================================
@@ -419,9 +422,9 @@ function generateSingleInstance(config, instanceSeed) {
 
         // Forgiveness constraint — check BOTH budgets
         if (forgivenessActive && canBruteForceN90) {
-            const n90L = countNearOptimalBundles(items, capLow, solLow.value, 90);
-            const n90H = countNearOptimalBundles(items, capHigh, solHigh.value, 90);
-            if (n90L > forgivenessCap || n90H > forgivenessCap) continue;
+            const bsL = countBundleStats(items, capLow, solLow.value, 90);
+            const bsH = countBundleStats(items, capHigh, solHigh.value, 90);
+            if (bsL.n90 > forgivenessCap || bsH.n90 > forgivenessCap) continue;
         }
 
         // Compute Sahni-k if not done yet
@@ -431,10 +434,14 @@ function generateSingleInstance(config, instanceSeed) {
         // Compute greedy ratio and N90 for display
         const greedyRatioLow = solLow.value > 0 ? greedyValue(items, capLow) / solLow.value : 0;
         const greedyRatioHigh = solHigh.value > 0 ? greedyValue(items, capHigh) / solHigh.value : 0;
-        let n90Low = null, n90High = null;
+        let n90Low = null, n90High = null, feasibleLow = null, feasibleHigh = null;
         if (canBruteForceN90) {
-            n90Low = countNearOptimalBundles(items, capLow, solLow.value, 90);
-            n90High = countNearOptimalBundles(items, capHigh, solHigh.value, 90);
+            const bsLow = countBundleStats(items, capLow, solLow.value, 90);
+            const bsHigh = countBundleStats(items, capHigh, solHigh.value, 90);
+            n90Low = bsLow.n90;
+            n90High = bsHigh.n90;
+            feasibleLow = bsLow.feasible;
+            feasibleHigh = bsHigh.feasible;
         }
 
         return {
@@ -449,7 +456,9 @@ function generateSingleInstance(config, instanceSeed) {
             greedyRatioLow,
             greedyRatioHigh,
             n90Low,
-            n90High
+            n90High,
+            feasibleLow,
+            feasibleHigh
         };
     }
 
@@ -463,10 +472,14 @@ function generateSingleInstance(config, instanceSeed) {
 
     const greedyRatioLow = optLow.value > 0 ? greedyValue(items, bLow) / optLow.value : 0;
     const greedyRatioHigh = optHigh.value > 0 ? greedyValue(items, bHigh) / optHigh.value : 0;
-    let n90Low = null, n90High = null;
+    let n90Low = null, n90High = null, feasibleLow = null, feasibleHigh = null;
     if (canBruteForceN90) {
-        n90Low = countNearOptimalBundles(items, bLow, optLow.value, 90);
-        n90High = countNearOptimalBundles(items, bHigh, optHigh.value, 90);
+        const bsLow = countBundleStats(items, bLow, optLow.value, 90);
+        const bsHigh = countBundleStats(items, bHigh, optHigh.value, 90);
+        n90Low = bsLow.n90;
+        n90High = bsHigh.n90;
+        feasibleLow = bsLow.feasible;
+        feasibleHigh = bsHigh.feasible;
     }
 
     return {
@@ -482,6 +495,8 @@ function generateSingleInstance(config, instanceSeed) {
         greedyRatioHigh,
         n90Low,
         n90High,
+        feasibleLow,
+        feasibleHigh,
         warning: 'Could not satisfy all constraints after 10,000 attempts.'
     };
 }
@@ -496,10 +511,18 @@ function formatInstanceBlock(result, index) {
     const lines = [];
     lines.push(`# Instance ${index + 1}  |  seed: ${result.seed}`);
     let lowLine = `# Low budget: ${result.budgetLow}  |  optimal: ${result.optLow.count} items (value ${result.optLow.value})  |  Sahni-k: ${result.sahniLow}  |  Greedy: ${(result.greedyRatioLow * 100).toFixed(1)}%`;
-    if (result.n90Low !== null) lowLine += `  |  N90: ${result.n90Low}`;
+    if (result.feasibleLow !== null) lowLine += `  |  Feasible: ${result.feasibleLow}`;
+    if (result.n90Low !== null) {
+        const shareLow = result.feasibleLow > 0 ? ` (${(result.n90Low / result.feasibleLow * 100).toFixed(1)}%)` : '';
+        lowLine += `  |  N90: ${result.n90Low}${shareLow}`;
+    }
     lines.push(lowLine);
     let highLine = `# High budget: ${result.budgetHigh}  |  optimal: ${result.optHigh.count} items (value ${result.optHigh.value})  |  Sahni-k: ${result.sahniHigh}  |  Greedy: ${(result.greedyRatioHigh * 100).toFixed(1)}%`;
-    if (result.n90High !== null) highLine += `  |  N90: ${result.n90High}`;
+    if (result.feasibleHigh !== null) highLine += `  |  Feasible: ${result.feasibleHigh}`;
+    if (result.n90High !== null) {
+        const shareHigh = result.feasibleHigh > 0 ? ` (${(result.n90High / result.feasibleHigh * 100).toFixed(1)}%)` : '';
+        highLine += `  |  N90: ${result.n90High}${shareHigh}`;
+    }
     lines.push(highLine);
     lines.push('# price,value');
     result.items.forEach(it => lines.push(`${it.weight},${it.value}`));
@@ -537,20 +560,24 @@ function renderResults() {
         const lowIds = result.optLow.items.map(it => it.id);
         const highIds = result.optHigh.items.map(it => it.id);
 
-        const n90LowStr = result.n90Low !== null ? `, N90=${result.n90Low}` : '';
-        const n90HighStr = result.n90High !== null ? `, N90=${result.n90High}` : '';
+        const feasibleLowStr = result.feasibleLow !== null ? `, Feasible=${result.feasibleLow.toLocaleString()}` : '';
+        const feasibleHighStr = result.feasibleHigh !== null ? `, Feasible=${result.feasibleHigh.toLocaleString()}` : '';
+        const n90LowShare = (result.n90Low !== null && result.feasibleLow > 0) ? ` (${(result.n90Low / result.feasibleLow * 100).toFixed(1)}%)` : '';
+        const n90HighShare = (result.n90High !== null && result.feasibleHigh > 0) ? ` (${(result.n90High / result.feasibleHigh * 100).toFixed(1)}%)` : '';
+        const n90LowStr = result.n90Low !== null ? `, N90=${result.n90Low}${n90LowShare}` : '';
+        const n90HighStr = result.n90High !== null ? `, N90=${result.n90High}${n90HighShare}` : '';
 
         dualMeta.innerHTML = `
             <div class="panel low">
                 <strong>Low Budget: ${result.budgetLow}</strong>
                 Optimal: ${result.optLow.count} items, value ${result.optLow.value}, price ${result.optLow.weight}, Sahni-k=${result.sahniLow}<br>
-                Greedy Performance: ${(result.greedyRatioLow * 100).toFixed(1)}%${n90LowStr}<br>
+                Greedy Performance: ${(result.greedyRatioLow * 100).toFixed(1)}%${feasibleLowStr}${n90LowStr}<br>
                 Items: ${lowIds.join(', ')}
             </div>
             <div class="panel high">
                 <strong>High Budget: ${result.budgetHigh}</strong>
                 Optimal: ${result.optHigh.count} items, value ${result.optHigh.value}, price ${result.optHigh.weight}, Sahni-k=${result.sahniHigh}<br>
-                Greedy Performance: ${(result.greedyRatioHigh * 100).toFixed(1)}%${n90HighStr}<br>
+                Greedy Performance: ${(result.greedyRatioHigh * 100).toFixed(1)}%${feasibleHighStr}${n90HighStr}<br>
                 Items: ${highIds.join(', ')}
             </div>
         `;
@@ -685,8 +712,8 @@ function downloadJSON() {
             seed: r.seed,
             budget_low: r.budgetLow,
             budget_high: r.budgetHigh,
-            optimal_low: { count: r.optLow.count, value: r.optLow.value, weight: r.optLow.weight, sahni_k: r.sahniLow, greedy_ratio: parseFloat((r.greedyRatioLow * 100).toFixed(1)), n90: r.n90Low, item_ids: r.optLow.items.map(it => it.id) },
-            optimal_high: { count: r.optHigh.count, value: r.optHigh.value, weight: r.optHigh.weight, sahni_k: r.sahniHigh, greedy_ratio: parseFloat((r.greedyRatioHigh * 100).toFixed(1)), n90: r.n90High, item_ids: r.optHigh.items.map(it => it.id) },
+            optimal_low: { count: r.optLow.count, value: r.optLow.value, weight: r.optLow.weight, sahni_k: r.sahniLow, greedy_ratio: parseFloat((r.greedyRatioLow * 100).toFixed(1)), feasible: r.feasibleLow, n90: r.n90Low, item_ids: r.optLow.items.map(it => it.id) },
+            optimal_high: { count: r.optHigh.count, value: r.optHigh.value, weight: r.optHigh.weight, sahni_k: r.sahniHigh, greedy_ratio: parseFloat((r.greedyRatioHigh * 100).toFixed(1)), feasible: r.feasibleHigh, n90: r.n90High, item_ids: r.optHigh.items.map(it => it.id) },
             items: r.items.map(it => ({ id: it.id, price: it.weight, value: it.value })),
             ...(r.warning ? { warning: r.warning } : {})
         }))

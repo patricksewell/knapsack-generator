@@ -217,7 +217,7 @@ function generateInstance(config) {
     const MAX_ATTEMPTS = 10000;
     let usedSeed = baseSeed;
     let items, capacity;
-    let foundGreedyRatio = null, foundN90 = null;
+    let foundGreedyRatio = null, foundN90 = null, foundFeasible = null;
     let warning = null;
     let found = false;
     
@@ -259,13 +259,12 @@ function generateInstance(config) {
             foundGreedyRatio = 0;
         }
         
-        // Forgiveness constraint (N90)
-        if (forgivenessActive && canBruteForceN90) {
-            const n90 = countNearOptimalBundles(items, capacity, optVal, 90);
-            if (n90 > forgivenessCap) continue; // reject: too forgiving
-            foundN90 = n90;
-        } else if (canBruteForceN90) {
-            foundN90 = countNearOptimalBundles(items, capacity, optVal, 90);
+        // Forgiveness constraint (N90) + feasible count
+        if (canBruteForceN90) {
+            const bs = countBundleStats(items, capacity, optVal, 90);
+            if (forgivenessActive && bs.n90 > forgivenessCap) continue; // reject: too forgiving
+            foundN90 = bs.n90;
+            foundFeasible = bs.feasible;
         }
         
         found = true;
@@ -283,7 +282,11 @@ function generateInstance(config) {
         
         const sol = solveKnapsack(items, capacity);
         foundGreedyRatio = sol.value > 0 ? greedyValue(items, capacity) / sol.value : 0;
-        if (canBruteForceN90) foundN90 = countNearOptimalBundles(items, capacity, sol.value, 90);
+        if (canBruteForceN90) {
+            const bs = countBundleStats(items, capacity, sol.value, 90);
+            foundN90 = bs.n90;
+            foundFeasible = bs.feasible;
+        }
         
         const constraints = [];
         if (config.optimalSize !== 'no_filter') constraints.push(`${config.optimalSize} items in optimal`);
@@ -319,6 +322,7 @@ function generateInstance(config) {
         target_sahni_k: config.targetSahniK,
         greedy_ratio: foundGreedyRatio,
         n90: foundN90,
+        feasible_count: foundFeasible,
         items
     };
     
@@ -340,7 +344,8 @@ function calculateStats(instance) {
         seedUsed: instance.seed,
         seedRequested: instance.seed_requested,
         greedyRatio: instance.greedy_ratio,
-        n90: instance.n90
+        n90: instance.n90,
+        feasibleCount: instance.feasible_count
     };
 }
 
@@ -498,13 +503,14 @@ function greedyValue(items, capacity) {
     return totalValue;
 }
 
-// Count feasible subsets with value >= alphaPercent% of optimal (brute-force bitmask)
-// Uses integer comparison to avoid float issues: value*100 >= alphaPercent*optValue
-function countNearOptimalBundles(items, capacity, optValue, alphaPercent) {
+// Count feasible subsets and near-optimal subsets (brute-force bitmask, n<=20)
+// Returns { feasible, n90 } where feasible = all subsets fitting in capacity,
+// n90 = subsets with value >= alphaPercent% of optimal.
+function countBundleStats(items, capacity, optValue, alphaPercent) {
     if (alphaPercent === undefined) alphaPercent = 90;
     const n = items.length;
     const threshold = alphaPercent * optValue; // compare against value*100
-    let count = 0;
+    let feasible = 0, n90 = 0;
     const total = 1 << n; // 2^n subsets
     for (let mask = 1; mask < total; mask++) {
         let w = 0, v = 0;
@@ -514,11 +520,12 @@ function countNearOptimalBundles(items, capacity, optValue, alphaPercent) {
                 v += items[i].value;
             }
         }
-        if (w <= capacity && v * 100 >= threshold) {
-            count++;
+        if (w <= capacity) {
+            feasible++;
+            if (v * 100 >= threshold) n90++;
         }
     }
-    return count;
+    return { feasible, n90 };
 }
 
 // Solve 0/1 knapsack with DP, return { value, items[] }
@@ -643,12 +650,22 @@ function renderStats(stats) {
         });
     }
     
-    // N90 (forgiveness)
+    // Feasible combinations
+    if (stats.feasibleCount !== null && stats.feasibleCount !== undefined) {
+        statItems.push({
+            label: 'Feasible Combinations',
+            value: stats.feasibleCount.toLocaleString(),
+            title: 'Total number of item subsets that fit within the budget.'
+        });
+    }
+    
+    // N90 (forgiveness) + share
     if (stats.n90 !== null && stats.n90 !== undefined) {
+        const shareStr = stats.feasibleCount > 0 ? ` (${(stats.n90 / stats.feasibleCount * 100).toFixed(1)}%)` : '';
         statItems.push({
             label: 'N90 (Forgiveness)',
-            value: stats.n90,
-            title: 'Number of feasible subsets achieving ≥ 90% of optimal value. Fewer = less forgiving instance.'
+            value: `${stats.n90}${shareStr}`,
+            title: 'Number of feasible subsets achieving ≥ 90% of optimal value, and their share of all feasible combinations. Fewer = less forgiving instance.'
         });
     }
     
