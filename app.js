@@ -211,44 +211,86 @@ function findCapacityInRange(items, budgetMin, budgetMax, targetOptSize, targetS
     return null;
 }
 
-// Main generation: iterate seeds until constraints are satisfied
+// Main generation: iterate seeds until all constraints are satisfied
 function generateInstance(config) {
     const baseSeed = config.seed;
-    const MAX_ATTEMPTS = 2000;
+    const MAX_ATTEMPTS = 10000;
     let usedSeed = baseSeed;
-    let items, capacityResult;
+    let items, capacity;
+    let foundGreedyRatio = null, foundN90 = null;
+    let warning = null;
+    let found = false;
+    
+    // Parse greedy constraint
+    const greedyActive = config.greedyCap !== 'random';
+    const greedyThreshold = greedyActive ? parseFloat(config.greedyCap) : null;
+    
+    // Parse forgiveness constraint
+    const forgivenessActive = config.forgivenessCap !== 'none';
+    const forgivenessCap = forgivenessActive ? parseInt(config.forgivenessCap) : null;
+    
+    // N90 brute-force is only feasible for small n (2^n subsets)
+    const canBruteForceN90 = config.nItems <= 20;
     
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         usedSeed = attempt === 0 ? baseSeed : baseSeed + '_' + attempt;
         items = generateItems(config, usedSeed);
-        capacityResult = findCapacityInRange(
+        
+        // Find capacity satisfying optimal-size + Sahni-k constraints
+        const capacityResult = findCapacityInRange(
             items, config.budgetMin, config.budgetMax,
             config.optimalSize, config.targetSahniK
         );
+        if (!capacityResult || !capacityResult.found) continue;
+        capacity = capacityResult.capacity;
         
-        if (capacityResult && capacityResult.found) break;
+        // Compute OPT
+        const sol = solveKnapsack(items, capacity);
+        const optVal = sol.value;
+        
+        // Greedy constraint
+        if (greedyActive && optVal > 0) {
+            const g = greedyValue(items, capacity) / optVal;
+            if (g >= greedyThreshold) continue; // reject: greedy too close
+            foundGreedyRatio = g;
+        } else if (optVal > 0) {
+            foundGreedyRatio = greedyValue(items, capacity) / optVal;
+        } else {
+            foundGreedyRatio = 0;
+        }
+        
+        // Forgiveness constraint (N90)
+        if (forgivenessActive && canBruteForceN90) {
+            const n90 = countNearOptimalBundles(items, capacity, optVal, 90);
+            if (n90 > forgivenessCap) continue; // reject: too forgiving
+            foundN90 = n90;
+        } else if (canBruteForceN90) {
+            foundN90 = countNearOptimalBundles(items, capacity, optVal, 90);
+        }
+        
+        found = true;
+        break;
     }
     
-    let capacity;
-    let warning = null;
-    if (!capacityResult || !capacityResult.found) {
-        items = generateItems(config, baseSeed);
+    if (!found) {
+        // Fallback: use base seed, pick a capacity in range
         usedSeed = baseSeed;
+        items = generateItems(config, usedSeed);
         const sumWeights = items.reduce((s, it) => s + it.weight, 0);
         capacity = Math.min(config.budgetMax, sumWeights - 1);
         capacity = Math.max(config.budgetMin, capacity);
         if (capacity < 1) capacity = 1;
+        
+        const sol = solveKnapsack(items, capacity);
+        foundGreedyRatio = sol.value > 0 ? greedyValue(items, capacity) / sol.value : 0;
+        if (canBruteForceN90) foundN90 = countNearOptimalBundles(items, capacity, sol.value, 90);
+        
         const constraints = [];
         if (config.optimalSize !== 'random') constraints.push(`${config.optimalSize} items in optimal`);
         if (config.targetSahniK !== 'random') constraints.push(`Sahni-k = ${config.targetSahniK}`);
-        const suggestions = [];
-        if (config.budgetMax - config.budgetMin < 100) suggestions.push('widen the budget range');
-        if (config.optimalSize !== 'random') suggestions.push('set Items in Optimal Solution to Random');
-        if (config.targetSahniK !== 'random') suggestions.push('set Sahni-k to Random');
-        suggestions.push('try a different seed');
-        warning = `Could not satisfy constraints (${constraints.join(', ')}) within budget [${config.budgetMin}, ${config.budgetMax}] after ${MAX_ATTEMPTS} attempts. Showing closest result. Try to: ${suggestions.join('; ')}.`;
-    } else {
-        capacity = capacityResult.capacity;
+        if (greedyActive) constraints.push(`greedy < ${(greedyThreshold * 100).toFixed(0)}% of OPT`);
+        if (forgivenessActive) constraints.push(`N90 ≤ ${forgivenessCap}`);
+        warning = `Could not satisfy constraints (${constraints.join(', ')}) after ${MAX_ATTEMPTS} attempts. Showing result for base seed. Try loosening Greedy proximity, increasing Forgiveness cap, widening budget range, or changing seed.`;
     }
     
     // Build output object with full metadata
@@ -275,6 +317,8 @@ function generateInstance(config) {
         ratio_spread: config.ratioSpread,
         integer_ratios: config.integerRatios,
         target_sahni_k: config.targetSahniK,
+        greedy_ratio: foundGreedyRatio,
+        n90: foundN90,
         items
     };
     
@@ -297,7 +341,9 @@ function calculateStats(instance) {
         budgetRange: instance.budget_range,
         capacityRatio: (instance.budget / sumWeights * 100).toFixed(1),
         seedUsed: instance.seed,
-        seedRequested: instance.seed_requested
+        seedRequested: instance.seed_requested,
+        greedyRatio: instance.greedy_ratio,
+        n90: instance.n90
     };
 }
 
@@ -328,6 +374,8 @@ const elements = {
     noiseSd: document.getElementById('noise_sd'),
     optimalSize: document.getElementById('optimal_size'),
     targetSahniK: document.getElementById('target_sahni_k'),
+    greedyCapSelect: document.getElementById('greedyCapSelect'),
+    forgivenessCapSelect: document.getElementById('forgivenessCapSelect'),
     ratioSpread: document.getElementById('ratio_spread'),
     integerRatios: document.getElementById('integer_ratios'),
     generateBtn: document.getElementById('generate_btn'),
@@ -423,7 +471,9 @@ function getConfig() {
         optimalSize: elements.optimalSize.value,
         ratioSpread: elements.ratioSpread.value,
         integerRatios: elements.integerRatios.checked,
-        targetSahniK: elements.targetSahniK.value
+        targetSahniK: elements.targetSahniK.value,
+        greedyCap: elements.greedyCapSelect.value,
+        forgivenessCap: elements.forgivenessCapSelect.value
     };
 }
 
@@ -435,6 +485,43 @@ function updateOptimalSizeOptions() {
     for (let i = 1; i < n; i++) {
         elements.optimalSize.innerHTML += `<option value="${i}"${current === String(i) ? ' selected' : ''}>${i}</option>`;
     }
+}
+
+// Greedy knapsack: sort by value/weight ratio descending, pack greedily
+function greedyValue(items, capacity) {
+    const sorted = items.slice().sort((a, b) => (b.value / b.weight) - (a.value / a.weight));
+    let remCap = capacity;
+    let totalValue = 0;
+    for (const item of sorted) {
+        if (item.weight <= remCap) {
+            totalValue += item.value;
+            remCap -= item.weight;
+        }
+    }
+    return totalValue;
+}
+
+// Count feasible subsets with value >= alphaPercent% of optimal (brute-force bitmask)
+// Uses integer comparison to avoid float issues: value*100 >= alphaPercent*optValue
+function countNearOptimalBundles(items, capacity, optValue, alphaPercent) {
+    if (alphaPercent === undefined) alphaPercent = 90;
+    const n = items.length;
+    const threshold = alphaPercent * optValue; // compare against value*100
+    let count = 0;
+    const total = 1 << n; // 2^n subsets
+    for (let mask = 1; mask < total; mask++) {
+        let w = 0, v = 0;
+        for (let i = 0; i < n; i++) {
+            if (mask & (1 << i)) {
+                w += items[i].weight;
+                v += items[i].value;
+            }
+        }
+        if (w <= capacity && v * 100 >= threshold) {
+            count++;
+        }
+    }
+    return count;
 }
 
 // Solve 0/1 knapsack with DP, return { value, items[] }
@@ -549,6 +636,24 @@ function renderStats(stats) {
     
     if (stats.seedUsed !== stats.seedRequested) {
         statItems.push({ label: 'Seed Used', value: stats.seedUsed, title: 'Seed was adjusted to satisfy budget range + optimal size constraints.' });
+    }
+    
+    // Greedy ratio
+    if (stats.greedyRatio !== null && stats.greedyRatio !== undefined) {
+        statItems.push({
+            label: 'Greedy / OPT',
+            value: `${(stats.greedyRatio * 100).toFixed(1)}%`,
+            title: 'Greedy solution value as a percentage of optimal. Lower = greedy is further from optimal = harder instance.'
+        });
+    }
+    
+    // N90 (forgiveness)
+    if (stats.n90 !== null && stats.n90 !== undefined) {
+        statItems.push({
+            label: 'N90 (Forgiveness)',
+            value: stats.n90,
+            title: 'Number of feasible subsets achieving ≥ 90% of optimal value. Fewer = less forgiving instance.'
+        });
     }
     
     elements.statsGrid.innerHTML = statItems.map(stat => `
