@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dual-Budget Knapsack Generator</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .dual-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 10px;
+        }
+        .dual-panel {
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            padding: 14px;
+        }
+        .dual-panel h3 {
+            font-size: 0.95rem;
+            color: #fff;
+            margin: -14px -14px 12px;
+            padding: 8px 14px;
+            border-radius: 6px 6px 0 0;
+        }
+        .dual-panel.low-budget h3 { background: #3498db; }
+        .dual-panel.high-budget h3 { background: #27ae60; }
+        .dual-panel .stats-grid {
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        }
+        @media (max-width: 700px) {
+            .dual-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        /* Highlight colors for low/high budget in table */
+        tr.optimal-low { background: rgba(52, 152, 219, 0.12) !important; }
+        tr.optimal-low td { color: #2471a3; }
+        tr.optimal-high { background: rgba(39, 174, 96, 0.12) !important; }
+        tr.optimal-high td { color: #1e8449; }
+        tr.optimal-both { background: rgba(155, 89, 182, 0.15) !important; }
+        tr.optimal-both td { color: #7d3c98; }
+        .legend { font-size: 0.78rem; color: #888; margin-bottom: 6px; display: flex; gap: 14px; flex-wrap: wrap; }
+        .legend span { display: inline-flex; align-items: center; gap: 4px; }
+        .legend-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+        .legend-dot.low { background: rgba(52, 152, 219, 0.35); }
+        .legend-dot.high { background: rgba(39, 174, 96, 0.35); }
+        .legend-dot.both { background: rgba(155, 89, 182, 0.35); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dual-Budget Knapsack Generator</h1>
+
+        <div class="description-toggle">
+            <button class="desc-btn" onclick="this.parentElement.classList.toggle('open')">
+                <span class="desc-arrow">▶</span> What is this?
+            </button>
+            <div class="desc-content">
+                <p>This variant generates <strong>one set of items</strong> and solves the 0/1 knapsack problem under <strong>two different budgets</strong> (low and high). This is useful for studying how the same set of items leads to different optimal solutions when the budget constraint changes.</p>
+                <p>All item generation settings work identically to the <a href="index.html">main generator</a>.</p>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="n_items">Number of Items</label>
+                    <input type="number" id="n_items" value="12" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="budget_low">Low Budget</label>
+                    <input type="number" id="budget_low" value="40" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="budget_high">High Budget</label>
+                    <input type="number" id="budget_high" value="100" min="1">
+                </div>
+            </div>
+
+            <div class="form-row dist-row">
+                <div class="form-group">
+                    <label for="weight_dist">Price Distribution</label>
+                    <select id="weight_dist">
+                        <option value="uniform">Uniform</option>
+                        <option value="normal">Normal</option>
+                        <option value="lognormal">Lognormal</option>
+                    </select>
+                    <label class="int-checkbox"><input type="checkbox" id="weight_int" checked> integer</label>
+                </div>
+                <div class="form-group params" id="weight_params">
+                    <div class="param-group uniform-params">
+                        <label>Min <input type="number" id="weight_min" value="1" min="1"></label>
+                        <label>Max <input type="number" id="weight_max" value="20" min="1"></label>
+                    </div>
+                    <div class="param-group normal-params hidden">
+                        <label>Mean <input type="number" id="weight_mean" value="10" step="0.1"></label>
+                        <label>SD <input type="number" id="weight_sd" value="3" step="0.1" min="0.1"></label>
+                    </div>
+                    <div class="param-group lognormal-params hidden">
+                        <label>μ <input type="number" id="weight_mu" value="2" step="0.1"></label>
+                        <label>σ <input type="number" id="weight_sigma" value="0.5" step="0.1" min="0.1"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-row dist-row-inner">
+                <div class="form-group">
+                    <label for="value_dist">Value Distribution</label>
+                    <select id="value_dist">
+                        <option value="uniform">Uniform</option>
+                        <option value="normal">Normal</option>
+                        <option value="lognormal">Lognormal</option>
+                    </select>
+                    <label class="int-checkbox"><input type="checkbox" id="value_int" checked> integer</label>
+                </div>
+                <div class="form-group params" id="value_params">
+                    <div class="param-group uniform-params">
+                        <label>Min <input type="number" id="value_min" value="1" min="1"></label>
+                        <label>Max <input type="number" id="value_max" value="50" min="1"></label>
+                    </div>
+                    <div class="param-group normal-params hidden">
+                        <label>Mean <input type="number" id="value_mean" value="25" step="0.1"></label>
+                        <label>SD <input type="number" id="value_sd" value="8" step="0.1" min="0.1"></label>
+                    </div>
+                    <div class="param-group lognormal-params hidden">
+                        <label>μ <input type="number" id="value_mu" value="3" step="0.1"></label>
+                        <label>σ <input type="number" id="value_sigma" value="0.5" step="0.1" min="0.1"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-row dist-row-inner">
+                <div class="form-group">
+                    <label for="correlation">Correlation <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Controls how price and value relate.<br><strong style="color:#74b9ff">Independent:</strong> drawn separately.<br><strong style="color:#55efc4">Positive:</strong> value = α × price + noise.<br><strong style="color:#fab1a0">Negative:</strong> value = α × (maxPrice − price) + noise.</div></span></label>
+                    <select id="correlation">
+                        <option value="independent">Independent</option>
+                        <option value="positive">Positive Linear</option>
+                        <option value="negative">Negative Linear</option>
+                    </select>
+                </div>
+                <div class="form-group params" id="correlation_params">
+                    <div class="param-group correlation-params hidden">
+                        <label>α <input type="number" id="alpha" value="2" step="0.1"></label>
+                        <label>Noise SD <input type="number" id="noise_sd" value="5" step="0.1" min="0"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-row dist-row-last">
+                <div class="form-group">
+                    <label for="ratio_spread">Ratio Spread</label>
+                    <select id="ratio_spread">
+                        <option value="low">Low (λ=0.3)</option>
+                        <option value="medium" selected>Medium (λ=1.0)</option>
+                        <option value="high">High (λ=2.0)</option>
+                    </select>
+                    <label class="int-checkbox"><input type="checkbox" id="integer_ratios"> integer ratios</label>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group seed-inline">
+                    <label for="seed">Seed <span style="font-weight:400;color:#aaa">(optional)</span></label>
+                    <input type="text" id="seed" value="12345" placeholder="e.g. 12345">
+                </div>
+            </div>
+
+            <div class="button-row">
+                <button id="generate_btn" class="primary">Generate</button>
+                <button id="download_json_btn">Download JSON</button>
+                <button id="copy_json_btn">Copy JSON</button>
+            </div>
+        </div>
+
+        <div class="output-section hidden" id="output_section">
+            <h2>Summary Statistics</h2>
+            <div class="stats-grid" id="stats_grid"></div>
+
+            <div class="dual-grid">
+                <div class="dual-panel low-budget">
+                    <h3>Low Budget</h3>
+                    <div class="stats-grid" id="optimal_low"></div>
+                </div>
+                <div class="dual-panel high-budget">
+                    <h3>High Budget</h3>
+                    <div class="stats-grid" id="optimal_high"></div>
+                </div>
+            </div>
+
+            <h2>Preview (First 25 Items)</h2>
+            <div class="legend">
+                <span><span class="legend-dot low"></span> Low budget only</span>
+                <span><span class="legend-dot high"></span> High budget only</span>
+                <span><span class="legend-dot both"></span> Both</span>
+            </div>
+            <div class="table-container">
+                <table id="preview_table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Price</th>
+                            <th>Value</th>
+                            <th>Value/Price</th>
+                        </tr>
+                    </thead>
+                    <tbody id="preview_body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="dual-app.js"></script>
+</body>
+</html>
