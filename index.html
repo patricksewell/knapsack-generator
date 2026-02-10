@@ -10,7 +10,11 @@
     <div class="container">
         <h1>0/1 Knapsack Instance Generator</h1>
 
-        <p class="intro">The <strong>0/1 knapsack problem</strong> asks a decision-maker to select a subset of items, each with a price and a value, to maximise total value without exceeding a fixed budget. Each item is either taken or left — hence "0/1." It captures many real-world trade-offs: a <em>consumer choosing which goods to buy</em> given a spending limit, a <em>firm selecting investment projects</em> under a capital constraint, or a <em>government allocating a limited budget across public programmes</em>.</p>
+        <p class="intro">The <strong>0/1 knapsack problem</strong> models a simple but powerful choice environment: a decision-maker must pick a subset of items, each with a price and a value, to maximize total value without exceeding a fixed budget.</p>
+
+        <p class="intro">For behavioral economists, this structure is especially useful because it controls for preferences and provides a distance to an optimal solution. It can be used to study, for example, how people allocate scarce resources across competing options; whether they rely on heuristics rather than optimization; how limited attention or choice overload change decision quality; and how decisions respond to framing, time pressure, incentives, or feedback.</p>
+
+        <p class="intro">Feel free to generate your own knapsack instances below, have fun! You can also set a seed for full reproducibility.</p>
 
         <div class="form-section">
             <div class="form-row">
@@ -24,7 +28,7 @@
                 </div>
             </div>
 
-            <div class="form-row">
+            <div class="form-row dist-row">
                 <div class="form-group">
                     <label for="weight_dist">Price Distribution</label>
                     <select id="weight_dist">
@@ -32,7 +36,7 @@
                         <option value="normal">Normal</option>
                         <option value="lognormal">Lognormal</option>
                     </select>
-                    <label class="int-checkbox"><input type="checkbox" id="weight_int" checked> int</label>
+                    <label class="int-checkbox"><input type="checkbox" id="weight_int" checked> integer</label>
                 </div>
                 <div class="form-group params" id="weight_params">
                     <div class="param-group uniform-params">
@@ -50,7 +54,7 @@
                 </div>
             </div>
 
-            <div class="form-row">
+            <div class="form-row dist-row">
                 <div class="form-group">
                     <label for="value_dist">Value Distribution</label>
                     <select id="value_dist">
@@ -58,7 +62,7 @@
                         <option value="normal">Normal</option>
                         <option value="lognormal">Lognormal</option>
                     </select>
-                    <label class="int-checkbox"><input type="checkbox" id="value_int" checked> int</label>
+                    <label class="int-checkbox"><input type="checkbox" id="value_int" checked> integer</label>
                 </div>
                 <div class="form-group params" id="value_params">
                     <div class="param-group uniform-params">
@@ -76,10 +80,9 @@
                 </div>
             </div>
 
-            <div class="form-row">
+            <div class="form-row dist-row dist-row-last">
                 <div class="form-group">
-                    <label for="correlation">Correlation <span class="info-icon" id="corr_info" tabindex="0">ⓘ</span></label>
-                    <div class="info-tooltip" id="corr_tooltip">Controls how price and value relate.<br><strong>Independent:</strong> drawn separately.<br><strong>Positive:</strong> value = α × price + noise.<br><strong>Negative:</strong> value = α × (maxPrice − price) + noise.<br>Noise ~ Normal(0, noise_sd).</div>
+                    <label for="correlation">Correlation <span class="info-icon" id="corr_info" tabindex="0">ⓘ<div class="info-tooltip">Controls how price and value relate.<br><strong>Independent:</strong> drawn separately.<br><strong>Positive:</strong> value = α × price + noise. Costlier items tend to be more valuable — harder problem.<br><strong>Negative:</strong> value = α × (maxPrice − price) + noise. Cheaper items tend to be more valuable — easier problem.<br>Noise ~ Normal(0, noise_sd).</div></span></label>
                     <select id="correlation">
                         <option value="independent">Independent</option>
                         <option value="positive">Positive Linear</option>
