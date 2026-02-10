@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batch Dual-Budget Knapsack Generator</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .target-section-label { font-size: 0.75rem; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: -4px; grid-column: 1 / -1; }
+        .target-section-label.low-label { color: #3498db; }
+        .target-section-label.high-label { color: #27ae60; }
+        .instance-card {
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+        .instance-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e1e8ed;
+            cursor: pointer;
+        }
+        .instance-header h3 {
+            margin: 0;
+            font-size: 0.95rem;
+            color: #2c3e50;
+        }
+        .instance-header .meta {
+            font-size: 0.78rem;
+            color: #888;
+            display: flex;
+            gap: 12px;
+        }
+        .instance-header .meta span { white-space: nowrap; }
+        .instance-header .meta .low-tag { color: #3498db; font-weight: 600; }
+        .instance-header .meta .high-tag { color: #27ae60; font-weight: 600; }
+        .instance-body {
+            padding: 12px 14px;
+        }
+        .instance-body pre {
+            background: #f8f9fa;
+            border: 1px solid #e1e8ed;
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 0.82rem;
+            line-height: 1.5;
+            margin: 0 0 8px;
+            white-space: pre;
+            overflow-x: auto;
+            font-family: 'SF Mono', Consolas, monospace;
+        }
+        .copy-instance-btn {
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            background: #ecf0f1;
+            border: 1px solid #dce1e3;
+            border-radius: 4px;
+            cursor: pointer;
+            color: #555;
+        }
+        .copy-instance-btn:hover { background: #dfe6e9; }
+        .progress-bar {
+            height: 4px;
+            background: #ecf0f1;
+            border-radius: 2px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            background: #3498db;
+            border-radius: 2px;
+            transition: width 0.2s;
+            width: 0%;
+        }
+        .dual-meta {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .dual-meta .panel {
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 0.78rem;
+        }
+        .dual-meta .panel.low { background: rgba(52, 152, 219, 0.08); color: #2471a3; }
+        .dual-meta .panel.high { background: rgba(39, 174, 96, 0.08); color: #1e8449; }
+        .dual-meta .panel strong { display: block; font-size: 0.72rem; text-transform: uppercase; margin-bottom: 2px; }
+        .copy-all-btn {
+            margin-left: 8px;
+        }
+        @media (max-width: 600px) {
+            .dual-meta { grid-template-columns: 1fr; }
+            .instance-header .meta { flex-wrap: wrap; gap: 6px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Batch Dual-Budget Generator</h1>
+
+        <div class="description-toggle">
+            <button class="desc-btn" onclick="this.parentElement.classList.toggle('open')">
+                <span class="desc-arrow">▶</span> What is this?
+            </button>
+            <div class="desc-content">
+                <p>Generate <strong>multiple knapsack instances</strong> at once, each satisfying dual-budget constraints (optimal item count range + Sahni-k for both a low and high budget). Output is in compact <code>price,value</code> format, ready to copy.</p>
+                <p>The generator iterates seeds until it finds instances matching all constraints. See the <a href="index.html">main generator</a> or <a href="dual.html">dual-budget page</a> for single-instance generation.</p>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="n_instances">Number of Instances</label>
+                    <input type="number" id="n_instances" value="4" min="1" max="50">
+                </div>
+                <div class="form-group">
+                    <label for="n_items">Items per Instance</label>
+                    <input type="number" id="n_items" value="12" min="1">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="target-section-label low-label">Low Budget</div>
+                <div class="form-group">
+                    <label for="budget_low_min">Budget Min</label>
+                    <input type="number" id="budget_low_min" value="20" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="budget_low_max">Budget Max</label>
+                    <input type="number" id="budget_low_max" value="40" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="opt_low_min">Optimal Items Min</label>
+                    <input type="number" id="opt_low_min" value="3" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="opt_low_max">Optimal Items Max</label>
+                    <input type="number" id="opt_low_max" value="5" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="sahni_k_low">Sahni-k</label>
+                    <select id="sahni_k_low">
+                        <option value="random">Random</option>
+                        <option value="0">0</option>
+                        <option value="1" selected>1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="target-section-label high-label">High Budget</div>
+                <div class="form-group">
+                    <label for="budget_high_min">Budget Min</label>
+                    <input type="number" id="budget_high_min" value="100" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="budget_high_max">Budget Max</label>
+                    <input type="number" id="budget_high_max" value="150" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="opt_high_min">Optimal Items Min</label>
+                    <input type="number" id="opt_high_min" value="7" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="opt_high_max">Optimal Items Max</label>
+                    <input type="number" id="opt_high_max" value="9" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="sahni_k_high">Sahni-k</label>
+                    <select id="sahni_k_high">
+                        <option value="random">Random</option>
+                        <option value="0">0</option>
+                        <option value="1" selected>1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row dist-row">
+                <div class="form-group">
+                    <label for="weight_dist">Price Distribution</label>
+                    <select id="weight_dist">
+                        <option value="uniform">Uniform</option>
+                        <option value="normal">Normal</option>
+                        <option value="lognormal">Lognormal</option>
+                    </select>
+                    <label class="int-checkbox"><input type="checkbox" id="weight_int" checked> integer</label>
+                </div>
+                <div class="form-group params" id="weight_params">
+                    <div class="param-group uniform-params">
+                        <label>Min <input type="number" id="weight_min" value="8" min="1"></label>
+                        <label>Max <input type="number" id="weight_max" value="40" min="1"></label>
+                    </div>
+                    <div class="param-group normal-params hidden">
+                        <label>Mean <input type="number" id="weight_mean" value="10" step="0.1"></label>
+                        <label>SD <input type="number" id="weight_sd" value="3" step="0.1" min="0.1"></label>
+                    </div>
+                    <div class="param-group lognormal-params hidden">
+                        <label>μ <input type="number" id="weight_mu" value="2" step="0.1"></label>
+                        <label>σ <input type="number" id="weight_sigma" value="0.5" step="0.1" min="0.1"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-row dist-row-inner">
+                <div class="form-group">
+                    <label for="value_dist">Value Distribution</label>
+                    <select id="value_dist">
+                        <option value="uniform">Uniform</option>
+                        <option value="normal">Normal</option>
+                        <option value="lognormal">Lognormal</option>
+                    </select>
+                    <label class="int-checkbox"><input type="checkbox" id="value_int" checked> integer</label>
+                </div>
+                <div class="form-group params" id="value_params">
+                    <div class="param-group uniform-params">
+                        <label>Min <input type="number" id="value_min" value="20" min="1"></label>
+                        <label>Max <input type="number" id="value_max" value="90" min="1"></label>
+                    </div>
+                    <div class="param-group normal-params hidden">
+                        <label>Mean <input type="number" id="value_mean" value="25" step="0.1"></label>
+                        <label>SD <input type="number" id="value_sd" value="8" step="0.1" min="0.1"></label>
+                    </div>
+                    <div class="param-group lognormal-params hidden">
+                        <label>μ <input type="number" id="value_mu" value="3" step="0.1"></label>
+                        <label>σ <input type="number" id="value_sigma" value="0.5" step="0.1" min="0.1"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-row dist-row-inner">
+                <div class="form-group">
+                    <label for="correlation">Correlation <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Controls how price and value relate.<br><strong style="color:#74b9ff">Independent:</strong> drawn separately.<br><strong style="color:#55efc4">Positive:</strong> value = α × price + noise.<br><strong style="color:#fab1a0">Negative:</strong> value = α × (maxPrice − price) + noise.</div></span></label>
+                    <select id="correlation">
+                        <option value="independent">Independent</option>
+                        <option value="positive">Positive Linear</option>
+                        <option value="negative">Negative Linear</option>
+                    </select>
+                </div>
+                <div class="form-group params" id="correlation_params">
+                    <div class="param-group correlation-params hidden">
+                        <label>α <input type="number" id="alpha" value="2" step="0.1"></label>
+                        <label>Noise SD <input type="number" id="noise_sd" value="5" step="0.1" min="0"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-row dist-row-last">
+                <div class="form-group">
+                    <label for="ratio_spread">Ratio Spread</label>
+                    <select id="ratio_spread">
+                        <option value="low">Low (λ=0.3)</option>
+                        <option value="medium" selected>Medium (λ=1.0)</option>
+                        <option value="high">High (λ=2.0)</option>
+                    </select>
+                    <label class="int-checkbox"><input type="checkbox" id="integer_ratios"> integer ratios</label>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group seed-inline">
+                    <label for="seed">Starting Seed</label>
+                    <input type="text" id="seed" value="1234" placeholder="e.g. 1234">
+                </div>
+            </div>
+
+            <div class="button-row">
+                <button id="generate_btn" class="primary">Generate Batch</button>
+                <button id="copy_all_btn">Copy All</button>
+                <button id="download_json_btn">Download JSON</button>
+            </div>
+        </div>
+
+        <div class="output-section hidden" id="output_section">
+            <div class="progress-bar" id="progress_bar"><div class="fill" id="progress_fill"></div></div>
+            <div id="results_container"></div>
+        </div>
+    </div>
+
+    <script src="batch-app.js"></script>
+</body>
+</html>
