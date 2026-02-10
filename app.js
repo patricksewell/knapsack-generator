@@ -150,6 +150,14 @@ function generateItems(config, seedStr) {
         }
     }
     
+    // Apply integer ratios: round each value to nearest multiple of its price
+    if (config.integerRatios) {
+        for (let i = 0; i < items.length; i++) {
+            const ratio = Math.max(1, Math.round(items[i].value / items[i].weight));
+            items[i].value = ratio * items[i].weight;
+        }
+    }
+    
     return items;
 }
 
@@ -265,6 +273,7 @@ function generateInstance(config) {
             noise_sd: config.correlation !== 'independent' ? config.noiseSd : null
         },
         ratio_spread: config.ratioSpread,
+        integer_ratios: config.integerRatios,
         target_sahni_k: config.targetSahniK,
         items
     };
@@ -320,6 +329,7 @@ const elements = {
     optimalSize: document.getElementById('optimal_size'),
     targetSahniK: document.getElementById('target_sahni_k'),
     ratioSpread: document.getElementById('ratio_spread'),
+    integerRatios: document.getElementById('integer_ratios'),
     generateBtn: document.getElementById('generate_btn'),
     downloadCsvBtn: document.getElementById('download_csv_btn'),
     downloadJsonBtn: document.getElementById('download_json_btn'),
@@ -412,6 +422,7 @@ function getConfig() {
         noiseSd: parseFloat(elements.noiseSd.value),
         optimalSize: elements.optimalSize.value,
         ratioSpread: elements.ratioSpread.value,
+        integerRatios: elements.integerRatios.checked,
         targetSahniK: elements.targetSahniK.value
     };
 }
@@ -531,7 +542,6 @@ function computeSahniK(items, capacity, optimalValue) {
 function renderStats(stats) {
     const statItems = [
         { label: 'Budget', value: stats.capacity },
-        { label: 'Budget Range', value: `${stats.budgetRange[0]}–${stats.budgetRange[1]}` },
         { label: 'Sum of Prices', value: stats.sumWeights },
         { label: 'Sum of Values', value: stats.sumValues },
         { label: 'Budget Ratio', value: `${stats.capacityRatio}%`, title: 'Budget as a percentage of total price. Always below 100% — not all items can be bought.' }

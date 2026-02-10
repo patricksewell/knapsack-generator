@@ -375,30 +375,30 @@ button:disabled {
 
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 8px;
 }
 
 .stat-card {
     background: #f8f9fa;
     border: 1px solid #e9ecef;
     border-radius: 7px;
-    padding: 12px;
+    padding: 8px 10px;
     text-align: center;
 }
 
 .stat-card .label {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     color: #6c757d;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
 .stat-card .value {
-    font-size: 1.25rem;
+    font-size: 1.1rem;
     font-weight: 700;
     color: #2c3e50;
-    margin-top: 3px;
+    margin-top: 2px;
 }
 
 .stat-card.warning {
