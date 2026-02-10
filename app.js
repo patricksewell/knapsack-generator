@@ -595,10 +595,10 @@ function renderOptimal(optimal, sahniK) {
 }
 
 // Render preview table
-function renderPreview(items) {
+function renderPreview(items, optimalIds) {
     const previewItems = items.slice(0, 25);
     elements.previewBody.innerHTML = previewItems.map(item => `
-        <tr>
+        <tr${optimalIds.has(item.id) ? ' class="optimal-row"' : ''}>
             <td>${item.id}</td>
             <td>${item.weight}</td>
             <td>${item.value}</td>
@@ -635,7 +635,8 @@ function generate() {
             `;
         }
         renderOptimal(optimal, sahniK);
-        renderPreview(currentInstance.items);
+        const optimalIds = new Set(optimal.items.map(it => it.id));
+        renderPreview(currentInstance.items, optimalIds);
         
         elements.outputSection.classList.remove('hidden');
         elements.downloadCsvBtn.disabled = false;

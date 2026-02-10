@@ -419,6 +419,15 @@ button:disabled {
     border: 1px solid #e1e8ed;
 }
 
+tr.optimal-row {
+    background: #e8f5e9 !important;
+}
+
+tr.optimal-row td {
+    color: #2e7d32;
+    font-weight: 600;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;
