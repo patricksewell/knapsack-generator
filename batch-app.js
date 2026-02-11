@@ -396,6 +396,9 @@ function generateSingleInstance(config, instanceSeed) {
     const forgivenessShare = forgivenessActive ? parseFloat(config.forgivenessCap) : Infinity;
     const canBruteForceN90 = config.nItems <= 20;
 
+    // Track best near-miss: passed structural + value-cap but failed greedy/N90
+    let bestFallback = null;
+
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         const usedSeed = attempt === 0 ? instanceSeed : instanceSeed + '_' + attempt;
         const items = generateItems(config, usedSeed);
@@ -420,6 +423,12 @@ function generateSingleInstance(config, instanceSeed) {
         // Max optimal value constraint
         if (config.maxOptValLow !== null && solLow.value > config.maxOptValLow) continue;
         if (config.maxOptValHigh !== null && solHigh.value > config.maxOptValHigh) continue;
+
+        // This attempt passed structural + value constraints — remember it
+        // as a potential fallback even if greedy/N90 fail below.
+        if (!bestFallback) {
+            bestFallback = { usedSeed, items, lowResult, highResult, capLow, capHigh, solLow, solHigh };
+        }
 
         // Greedy constraint — check BOTH budgets
         if (greedyActive) {
@@ -472,42 +481,47 @@ function generateSingleInstance(config, instanceSeed) {
         };
     }
 
-    // Fallback
-    const items = generateItems(config, instanceSeed);
-    const sumW = items.reduce((s, it) => s + it.weight, 0);
-    const bLow = Math.max(1, Math.min(Math.round((config.budgetLowMin + config.budgetLowMax) / 2), sumW - 1));
-    const bHigh = Math.max(1, Math.min(Math.round((config.budgetHighMin + config.budgetHighMax) / 2), sumW - 1));
-    const optLow = solveKnapsack(items, bLow);
-    const optHigh = solveKnapsack(items, bHigh);
+    // Fallback — prefer a near-miss that at least satisfies the value cap
+    const fb = bestFallback || null;
+    const fbItems = fb ? fb.items : generateItems(config, instanceSeed);
+    const fbSumW = fbItems.reduce((s, it) => s + it.weight, 0);
+    const fbCapLow = fb ? fb.capLow : Math.max(1, Math.min(Math.round((config.budgetLowMin + config.budgetLowMax) / 2), fbSumW - 1));
+    const fbCapHigh = fb ? fb.capHigh : Math.max(1, Math.min(Math.round((config.budgetHighMin + config.budgetHighMax) / 2), fbSumW - 1));
+    const fbSolLow = fb ? fb.solLow : solveKnapsack(fbItems, fbCapLow);
+    const fbSolHigh = fb ? fb.solHigh : solveKnapsack(fbItems, fbCapHigh);
+    const fbSeed = fb ? fb.usedSeed : instanceSeed;
 
-    const greedyRatioLow = optLow.value > 0 ? greedyValue(items, bLow) / optLow.value : 0;
-    const greedyRatioHigh = optHigh.value > 0 ? greedyValue(items, bHigh) / optHigh.value : 0;
+    const greedyRatioLow = fbSolLow.value > 0 ? greedyValue(fbItems, fbCapLow) / fbSolLow.value : 0;
+    const greedyRatioHigh = fbSolHigh.value > 0 ? greedyValue(fbItems, fbCapHigh) / fbSolHigh.value : 0;
     let n90Low = null, n90High = null, feasibleLow = null, feasibleHigh = null;
     if (canBruteForceN90) {
-        const bsLow = countBundleStats(items, bLow, optLow.value, 90);
-        const bsHigh = countBundleStats(items, bHigh, optHigh.value, 90);
+        const bsLow = countBundleStats(fbItems, fbCapLow, fbSolLow.value, 90);
+        const bsHigh = countBundleStats(fbItems, fbCapHigh, fbSolHigh.value, 90);
         n90Low = bsLow.n90;
         n90High = bsHigh.n90;
         feasibleLow = bsLow.feasible;
         feasibleHigh = bsHigh.feasible;
     }
 
+    const fbSahniLow = fb && fb.lowResult.sahniK !== null ? fb.lowResult.sahniK : computeSahniK(fbItems, fbCapLow, fbSolLow.value);
+    const fbSahniHigh = fb && fb.highResult.sahniK !== null ? fb.highResult.sahniK : computeSahniK(fbItems, fbCapHigh, fbSolHigh.value);
+
     return {
-        seed: instanceSeed,
-        items,
-        budgetLow: bLow,
-        budgetHigh: bHigh,
-        optLow,
-        optHigh,
-        sahniLow: computeSahniK(items, bLow, optLow.value),
-        sahniHigh: computeSahniK(items, bHigh, optHigh.value),
+        seed: fbSeed,
+        items: fbItems,
+        budgetLow: fbCapLow,
+        budgetHigh: fbCapHigh,
+        optLow: fbSolLow,
+        optHigh: fbSolHigh,
+        sahniLow: fbSahniLow,
+        sahniHigh: fbSahniHigh,
         greedyRatioLow,
         greedyRatioHigh,
         n90Low,
         n90High,
         feasibleLow,
         feasibleHigh,
-        warning: 'Could not satisfy all constraints after 10,000 attempts.'
+        warning: 'Could not satisfy all constraints after 10,000 attempts.' + (fb ? ' (value cap respected, greedy/N90 relaxed)' : '')
     };
 }
 
