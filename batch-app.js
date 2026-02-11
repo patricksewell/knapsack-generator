@@ -191,33 +191,40 @@ function computeSahniK(items, capacity, optimalValue) {
 // ============================================================
 // Find a valid capacity within [budgetMin, budgetMax] that satisfies
 // optimal-size RANGE [optMin, optMax] + Sahni-k target + optional
-// max optimal value constraint.
+// optimal value range [minOptVal, maxOptVal].
 // Returns { capacity, sol, sahniK } or null.
 // ============================================================
-function findCapacityInRange(items, budgetMin, budgetMax, optMin, optMax, targetSahniK, maxOptVal) {
+function findCapacityInRange(items, budgetMin, budgetMax, optMin, optMax, targetSahniK, minOptVal, maxOptVal) {
     const sumWeights = items.reduce((s, it) => s + it.weight, 0);
     const lo = Math.max(1, budgetMin);
     const hi = Math.min(budgetMax, sumWeights - 1);
     if (lo > hi) return null;
 
     const anyOptTarget = (optMin !== null && optMax !== null);
-    const hasValueCap = maxOptVal !== null && maxOptVal !== undefined;
+    const hasMinVal = minOptVal !== null && minOptVal !== undefined;
+    const hasMaxVal = maxOptVal !== null && maxOptVal !== undefined;
+
+    function valueInRange(v) {
+        if (hasMinVal && v < minOptVal) return false;
+        if (hasMaxVal && v > maxOptVal) return false;
+        return true;
+    }
 
     // Collect candidate capacities (with their solutions)
     let candidates = [];
 
     if (!anyOptTarget) {
         if (targetSahniK === 'no_filter') {
-            // Try middle capacity first, but respect value cap
+            // Try middle capacity first, but respect value range
             const cap = Math.round((lo + hi) / 2);
             const sol = solveKnapsack(items, cap);
-            if (!hasValueCap || sol.value <= maxOptVal) {
+            if (valueInRange(sol.value)) {
                 return { capacity: cap, sol, sahniK: null };
             }
-            // Middle didn't work — try all capacities for one under the cap
+            // Middle didn't work — try all capacities for one in range
             for (let c = lo; c <= hi; c++) {
                 const s = solveKnapsack(items, c);
-                if (!hasValueCap || s.value <= maxOptVal) {
+                if (valueInRange(s.value)) {
                     return { capacity: c, sol: s, sahniK: null };
                 }
             }
@@ -229,8 +236,8 @@ function findCapacityInRange(items, budgetMin, budgetMax, optMin, optMax, target
         for (let c = lo; c <= hi; c++) {
             const sol = solveKnapsack(items, c);
             if (sol.count >= optMin && sol.count <= optMax) {
-                // Also enforce value cap here so we don't carry forward bad candidates
-                if (!hasValueCap || sol.value <= maxOptVal) {
+                // Also enforce value range so we don't carry forward bad candidates
+                if (valueInRange(sol.value)) {
                     candidates.push(c);
                 }
             }
@@ -304,7 +311,9 @@ const el = {
     optHighMax: document.getElementById('opt_high_max'),
     sahniKLow: document.getElementById('sahni_k_low'),
     sahniKHigh: document.getElementById('sahni_k_high'),
+    minOptValLow: document.getElementById('min_opt_val_low'),
     maxOptValLow: document.getElementById('max_opt_val_low'),
+    minOptValHigh: document.getElementById('min_opt_val_high'),
     maxOptValHigh: document.getElementById('max_opt_val_high'),
     greedyCapSelect: document.getElementById('greedyCapSelect'),
     forgivenessCapSelect: document.getElementById('forgivenessCapSelect'),
@@ -389,7 +398,9 @@ function getConfig() {
         optHighMax: parseInt(el.optHighMax.value),
         sahniKLow: el.sahniKLow.value,
         sahniKHigh: el.sahniKHigh.value,
+        minOptValLow: el.minOptValLow.value ? parseInt(el.minOptValLow.value) : null,
         maxOptValLow: el.maxOptValLow.value ? parseInt(el.maxOptValLow.value) : null,
+        minOptValHigh: el.minOptValHigh.value ? parseInt(el.minOptValHigh.value) : null,
         maxOptValHigh: el.maxOptValHigh.value ? parseInt(el.maxOptValHigh.value) : null,
         greedyCap: el.greedyCapSelect.value,
         forgivenessCap: el.forgivenessCapSelect.value,
@@ -423,13 +434,13 @@ function generateSingleInstance(config, instanceSeed) {
 
         const lowResult = findCapacityInRange(
             items, config.budgetLowMin, config.budgetLowMax,
-            config.optLowMin, config.optLowMax, config.sahniKLow, config.maxOptValLow
+            config.optLowMin, config.optLowMax, config.sahniKLow, config.minOptValLow, config.maxOptValLow
         );
         if (!lowResult) continue;
 
         const highResult = findCapacityInRange(
             items, config.budgetHighMin, config.budgetHighMax,
-            config.optHighMin, config.optHighMax, config.sahniKHigh, config.maxOptValHigh
+            config.optHighMin, config.optHighMax, config.sahniKHigh, config.minOptValHigh, config.maxOptValHigh
         );
         if (!highResult) continue;
 
@@ -740,8 +751,8 @@ function downloadJSON() {
         target_optimal_high: [config.optHighMin, config.optHighMax],
         target_sahni_k_low: config.sahniKLow,
         target_sahni_k_high: config.sahniKHigh,
-        max_optimal_value_low: config.maxOptValLow,
-        max_optimal_value_high: config.maxOptValHigh,
+        optimal_value_range_low: [config.minOptValLow, config.maxOptValLow],
+        optimal_value_range_high: [config.minOptValHigh, config.maxOptValHigh],
         price_dist: { name: distName(config.weightDist, config.weightInt), params: config.weightParams },
         value_dist: config.correlation === 'independent' ? { name: distName(config.valueDist, config.valueInt), params: config.valueParams } : null,
         correlation: { mode: CORRELATION_NAMES[config.correlation] },
