@@ -210,38 +210,16 @@ function findCapacityInRange(items, budgetMin, budgetMax, optMin, optMax, target
         return true;
     }
 
-    // Collect candidate capacities (with their solutions)
+    // Collect candidate capacities whose optimal value falls in range
     let candidates = [];
 
-    if (!anyOptTarget) {
-        if (targetSahniK === 'no_filter') {
-            // Try middle capacity first, but respect value range
-            const cap = Math.round((lo + hi) / 2);
-            const sol = solveKnapsack(items, cap);
-            if (valueInRange(sol.value)) {
-                return { capacity: cap, sol, sahniK: null };
-            }
-            // Middle didn't work — try all capacities for one in range
-            for (let c = lo; c <= hi; c++) {
-                const s = solveKnapsack(items, c);
-                if (valueInRange(s.value)) {
-                    return { capacity: c, sol: s, sahniK: null };
-                }
-            }
-            return null;
-        }
-        for (let c = lo; c <= hi; c++) candidates.push(c);
-    } else {
-        // Scan for capacities giving optimal count in [optMin, optMax]
-        for (let c = lo; c <= hi; c++) {
-            const sol = solveKnapsack(items, c);
-            if (sol.count >= optMin && sol.count <= optMax) {
-                // Also enforce value range so we don't carry forward bad candidates
-                if (valueInRange(sol.value)) {
-                    candidates.push(c);
-                }
-            }
-        }
+    for (let c = lo; c <= hi; c++) {
+        const sol = solveKnapsack(items, c);
+        // Enforce optimal item count range (if set)
+        if (anyOptTarget && (sol.count < optMin || sol.count > optMax)) continue;
+        // Enforce optimal value range (if set)
+        if (!valueInRange(sol.value)) continue;
+        candidates.push(c);
     }
 
     if (candidates.length === 0) return null;
