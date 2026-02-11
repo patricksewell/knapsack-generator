@@ -259,10 +259,11 @@ function generateInstance(config) {
             foundGreedyRatio = 0;
         }
         
-        // Forgiveness constraint (N90 share) + feasible count
+        // Forgiveness constraint (N90 share) + feasible count + min feasible
         if (canBruteForceN90) {
             const bs = countBundleStats(items, capacity, optVal, 90);
             if (forgivenessActive && bs.feasible > 0 && (bs.n90 / bs.feasible) > forgivenessShare) continue;
+            if (config.minFeasible !== null && bs.feasible < config.minFeasible) continue;
             foundN90 = bs.n90;
             foundFeasible = bs.feasible;
         }
@@ -293,6 +294,7 @@ function generateInstance(config) {
         if (config.targetSahniK !== 'no_filter') constraints.push(`Sahni-k = ${config.targetSahniK}`);
         if (greedyActive) constraints.push(`greedy < ${(greedyThreshold * 100).toFixed(0)}% of OPT`);
         if (forgivenessActive) constraints.push(`N90 share ≤ ${(forgivenessShare * 100).toFixed(1)}%`);
+        if (config.minFeasible !== null) constraints.push(`feasible ≥ ${config.minFeasible}`);
         warning = `Could not satisfy constraints (${constraints.join(', ')}) after ${MAX_ATTEMPTS} attempts. Showing result for base seed. Try loosening Greedy proximity, increasing N90 share cap, widening budget range, or changing seed.`;
     }
     
@@ -378,6 +380,7 @@ const elements = {
     targetSahniK: document.getElementById('target_sahni_k'),
     greedyCapSelect: document.getElementById('greedyCapSelect'),
     forgivenessCapSelect: document.getElementById('forgivenessCapSelect'),
+    minFeasibleInput: document.getElementById('minFeasibleInput'),
     ratioSpread: document.getElementById('ratio_spread'),
     integerRatios: document.getElementById('integer_ratios'),
     generateBtn: document.getElementById('generate_btn'),
@@ -475,7 +478,8 @@ function getConfig() {
         integerRatios: elements.integerRatios.checked,
         targetSahniK: elements.targetSahniK.value,
         greedyCap: elements.greedyCapSelect.value,
-        forgivenessCap: elements.forgivenessCapSelect.value
+        forgivenessCap: elements.forgivenessCapSelect.value,
+        minFeasible: elements.minFeasibleInput.value ? parseInt(elements.minFeasibleInput.value) : null
     };
 }
 

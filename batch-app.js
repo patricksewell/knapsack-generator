@@ -295,6 +295,7 @@ const el = {
     maxOptValHigh: document.getElementById('max_opt_val_high'),
     greedyCapSelect: document.getElementById('greedyCapSelect'),
     forgivenessCapSelect: document.getElementById('forgivenessCapSelect'),
+    minFeasibleInput: document.getElementById('minFeasibleInput'),
     seed: document.getElementById('seed'),
     weightDist: document.getElementById('weight_dist'),
     valueDist: document.getElementById('value_dist'),
@@ -382,6 +383,7 @@ function getConfig() {
         maxOptValHigh: el.maxOptValHigh.value ? parseInt(el.maxOptValHigh.value) : null,
         greedyCap: el.greedyCapSelect.value,
         forgivenessCap: el.forgivenessCapSelect.value,
+        minFeasible: el.minFeasibleInput.value ? parseInt(el.minFeasibleInput.value) : null,
         seed: el.seed.value,
         weightDist, weightParams, weightInt: el.weightInt.checked,
         valueDist, valueParams, valueInt: el.valueInt.checked,
@@ -440,13 +442,16 @@ function generateSingleInstance(config, instanceSeed) {
             if (gLow >= greedyThreshold || gHigh >= greedyThreshold) continue;
         }
 
-        // Forgiveness constraint (N90 share) — check BOTH budgets
-        if (forgivenessActive && canBruteForceN90) {
+        // Forgiveness constraint (N90 share) + min feasible — check BOTH budgets
+        if (canBruteForceN90) {
             const bsL = countBundleStats(items, capLow, solLow.value, 90);
             const bsH = countBundleStats(items, capHigh, solHigh.value, 90);
-            const shareLow = bsL.feasible > 0 ? bsL.n90 / bsL.feasible : 0;
-            const shareHigh = bsH.feasible > 0 ? bsH.n90 / bsH.feasible : 0;
-            if (shareLow > forgivenessShare || shareHigh > forgivenessShare) continue;
+            if (forgivenessActive) {
+                const shareLow = bsL.feasible > 0 ? bsL.n90 / bsL.feasible : 0;
+                const shareHigh = bsH.feasible > 0 ? bsH.n90 / bsH.feasible : 0;
+                if (shareLow > forgivenessShare || shareHigh > forgivenessShare) continue;
+            }
+            if (config.minFeasible !== null && (bsL.feasible < config.minFeasible || bsH.feasible < config.minFeasible)) continue;
         }
 
         // Compute Sahni-k if not done yet

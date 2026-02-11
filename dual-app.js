@@ -263,6 +263,7 @@ const el = {
     sahniKHigh: document.getElementById('sahni_k_high'),
     greedyCapSelect: document.getElementById('greedyCapSelect'),
     forgivenessCapSelect: document.getElementById('forgivenessCapSelect'),
+    minFeasibleInput: document.getElementById('minFeasibleInput'),
     generateBtn: document.getElementById('generate_btn'),
     downloadJsonBtn: document.getElementById('download_json_btn'),
     copyJsonBtn: document.getElementById('copy_json_btn'),
@@ -329,7 +330,8 @@ function getConfig() {
         sahniKLow: el.sahniKLow.value,
         sahniKHigh: el.sahniKHigh.value,
         greedyCap: el.greedyCapSelect.value,
-        forgivenessCap: el.forgivenessCapSelect.value
+        forgivenessCap: el.forgivenessCapSelect.value,
+        minFeasible: el.minFeasibleInput.value ? parseInt(el.minFeasibleInput.value) : null
     };
 }
 
@@ -508,13 +510,16 @@ function generate() {
                 if (gLow >= greedyThreshold || gHigh >= greedyThreshold) continue;
             }
 
-            // Forgiveness constraint (N90 share) — check BOTH budgets
-            if (forgivenessActive && canBruteForceN90) {
+            // Forgiveness constraint (N90 share) + min feasible — check BOTH budgets
+            if (canBruteForceN90) {
                 const bsL = countBundleStats(items, capLow, solLow.value, 90);
                 const bsH = countBundleStats(items, capHigh, solHigh.value, 90);
-                const shareLow = bsL.feasible > 0 ? bsL.n90 / bsL.feasible : 0;
-                const shareHigh = bsH.feasible > 0 ? bsH.n90 / bsH.feasible : 0;
-                if (shareLow > forgivenessShare || shareHigh > forgivenessShare) continue;
+                if (forgivenessActive) {
+                    const shareLow = bsL.feasible > 0 ? bsL.n90 / bsL.feasible : 0;
+                    const shareHigh = bsH.feasible > 0 ? bsH.n90 / bsH.feasible : 0;
+                    if (shareLow > forgivenessShare || shareHigh > forgivenessShare) continue;
+                }
+                if (config.minFeasible !== null && (bsL.feasible < config.minFeasible || bsH.feasible < config.minFeasible)) continue;
             }
 
             // Both satisfied
@@ -547,6 +552,7 @@ function generate() {
             if (config.sahniKHigh !== 'no_filter') constraints.push(`high Sahni-k = ${config.sahniKHigh}`);
             if (greedyActive) constraints.push(`greedy < ${(greedyThreshold * 100).toFixed(0)}%`);
             if (forgivenessActive) constraints.push(`N90 share ≤ ${(forgivenessShare * 100).toFixed(1)}%`);
+            if (config.minFeasible !== null) constraints.push(`feasible ≥ ${config.minFeasible}`);
             warning = `Could not satisfy constraints (${constraints.join(', ')}) after ${MAX_ATTEMPTS} attempts. Showing result for base seed. Try loosening constraints, widening budget ranges, or changing seed.`;
         }
 
