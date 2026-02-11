@@ -467,7 +467,7 @@ function generate() {
     const greedyActive = config.greedyCap !== 'no_filter';
     const greedyThreshold = greedyActive ? parseFloat(config.greedyCap) : 1;
     const forgivenessActive = config.forgivenessCap !== 'no_filter';
-    const forgivenessCap = forgivenessActive ? parseInt(config.forgivenessCap) : Infinity;
+    const forgivenessShare = forgivenessActive ? parseFloat(config.forgivenessCap) : Infinity;
     const canBruteForceN90 = config.nItems <= 20;
 
     setTimeout(() => {
@@ -508,11 +508,13 @@ function generate() {
                 if (gLow >= greedyThreshold || gHigh >= greedyThreshold) continue;
             }
 
-            // Forgiveness constraint — check BOTH budgets
+            // Forgiveness constraint (N90 share) — check BOTH budgets
             if (forgivenessActive && canBruteForceN90) {
                 const bsL = countBundleStats(items, capLow, solLow.value, 90);
                 const bsH = countBundleStats(items, capHigh, solHigh.value, 90);
-                if (bsL.n90 > forgivenessCap || bsH.n90 > forgivenessCap) continue;
+                const shareLow = bsL.feasible > 0 ? bsL.n90 / bsL.feasible : 0;
+                const shareHigh = bsH.feasible > 0 ? bsH.n90 / bsH.feasible : 0;
+                if (shareLow > forgivenessShare || shareHigh > forgivenessShare) continue;
             }
 
             // Both satisfied
@@ -544,7 +546,7 @@ function generate() {
             if (config.optimalSizeHigh !== 'no_filter') constraints.push(`high optimal = ${config.optimalSizeHigh} items`);
             if (config.sahniKHigh !== 'no_filter') constraints.push(`high Sahni-k = ${config.sahniKHigh}`);
             if (greedyActive) constraints.push(`greedy < ${(greedyThreshold * 100).toFixed(0)}%`);
-            if (forgivenessActive) constraints.push(`N90 ≤ ${forgivenessCap}`);
+            if (forgivenessActive) constraints.push(`N90 share ≤ ${(forgivenessShare * 100).toFixed(1)}%`);
             warning = `Could not satisfy constraints (${constraints.join(', ')}) after ${MAX_ATTEMPTS} attempts. Showing result for base seed. Try loosening constraints, widening budget ranges, or changing seed.`;
         }
 

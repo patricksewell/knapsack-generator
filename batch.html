@@ -294,17 +294,16 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="forgivenessCapSelect">Max # feasible bundles within 90% of optimal <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Count of feasible subsets whose total value ≥ 90 % of the optimum (N90). Lower caps make the instance less forgiving. Only evaluated when items ≤ 20.</div></span></label>
+                    <label for="forgivenessCapSelect">Max N90 share <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Reject instances where more than this share of feasible combinations achieve ≥ 90% of optimal value.<br>Lower % = fewer near-optimal alternatives = less "forgiving" instance. Only evaluated when items ≤ 20.</div></span></label>
                     <select id="forgivenessCapSelect">
                         <option value="no_filter">No filter</option>
-                        <option value="5">5</option>
-                        <option value="10">10</option>
-                        <option value="15">15</option>
-                        <option value="20">20</option>
-                        <option value="30">30</option>
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                        <option value="200">200</option>
+                        <option value="0.005">0.5 %</option>
+                        <option value="0.01">1 %</option>
+                        <option value="0.015">1.5 %</option>
+                        <option value="0.02">2 %</option>
+                        <option value="0.03">3 %</option>
+                        <option value="0.04">4 %</option>
+                        <option value="0.05">5 %</option>
                     </select>
                 </div>
             </div>

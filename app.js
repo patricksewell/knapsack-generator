@@ -225,9 +225,9 @@ function generateInstance(config) {
     const greedyActive = config.greedyCap !== 'no_filter';
     const greedyThreshold = greedyActive ? parseFloat(config.greedyCap) : null;
     
-    // Parse forgiveness constraint
+    // Parse forgiveness constraint (N90 share)
     const forgivenessActive = config.forgivenessCap !== 'no_filter';
-    const forgivenessCap = forgivenessActive ? parseInt(config.forgivenessCap) : null;
+    const forgivenessShare = forgivenessActive ? parseFloat(config.forgivenessCap) : null;
     
     // N90 brute-force is only feasible for small n (2^n subsets)
     const canBruteForceN90 = config.nItems <= 20;
@@ -259,10 +259,10 @@ function generateInstance(config) {
             foundGreedyRatio = 0;
         }
         
-        // Forgiveness constraint (N90) + feasible count
+        // Forgiveness constraint (N90 share) + feasible count
         if (canBruteForceN90) {
             const bs = countBundleStats(items, capacity, optVal, 90);
-            if (forgivenessActive && bs.n90 > forgivenessCap) continue; // reject: too forgiving
+            if (forgivenessActive && bs.feasible > 0 && (bs.n90 / bs.feasible) > forgivenessShare) continue;
             foundN90 = bs.n90;
             foundFeasible = bs.feasible;
         }
@@ -292,8 +292,8 @@ function generateInstance(config) {
         if (config.optimalSize !== 'no_filter') constraints.push(`${config.optimalSize} items in optimal`);
         if (config.targetSahniK !== 'no_filter') constraints.push(`Sahni-k = ${config.targetSahniK}`);
         if (greedyActive) constraints.push(`greedy < ${(greedyThreshold * 100).toFixed(0)}% of OPT`);
-        if (forgivenessActive) constraints.push(`N90 ≤ ${forgivenessCap}`);
-        warning = `Could not satisfy constraints (${constraints.join(', ')}) after ${MAX_ATTEMPTS} attempts. Showing result for base seed. Try loosening Greedy proximity, increasing Forgiveness cap, widening budget range, or changing seed.`;
+        if (forgivenessActive) constraints.push(`N90 share ≤ ${(forgivenessShare * 100).toFixed(1)}%`);
+        warning = `Could not satisfy constraints (${constraints.join(', ')}) after ${MAX_ATTEMPTS} attempts. Showing result for base seed. Try loosening Greedy proximity, increasing N90 share cap, widening budget range, or changing seed.`;
     }
     
     // Build output object with full metadata
