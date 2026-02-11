@@ -94,6 +94,8 @@
         .copy-all-btn {
             margin-left: 8px;
         }
+        .form-group.compact { min-width: 80px; max-width: 100px; }
+        .form-group.compact input[type="number"] { width: 100%; }
         @media (max-width: 600px) {
             .dual-meta { grid-template-columns: 1fr; }
             .instance-header .meta { flex-wrap: wrap; gap: 6px; }
@@ -128,20 +130,20 @@
 
             <div class="form-row">
                 <div class="target-section-label low-label">Low Budget</div>
-                <div class="form-group">
+                <div class="form-group compact">
                     <label for="budget_low_min">Budget Min</label>
                     <input type="number" id="budget_low_min" value="20" min="1">
                 </div>
-                <div class="form-group">
+                <div class="form-group compact">
                     <label for="budget_low_max">Budget Max</label>
                     <input type="number" id="budget_low_max" value="40" min="1">
                 </div>
-                <div class="form-group">
-                    <label for="opt_low_min">Optimal Items Min</label>
+                <div class="form-group compact">
+                    <label for="opt_low_min">Opt. Items Min</label>
                     <input type="number" id="opt_low_min" value="3" min="1">
                 </div>
-                <div class="form-group">
-                    <label for="opt_low_max">Optimal Items Max</label>
+                <div class="form-group compact">
+                    <label for="opt_low_max">Opt. Items Max</label>
                     <input type="number" id="opt_low_max" value="5" min="1">
                 </div>
                 <div class="form-group">
@@ -157,24 +159,28 @@
                         <option value="6">6</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label for="max_opt_val_low">Max Optimal Value <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Reject instances where the optimal knapsack value for the low budget exceeds this amount.<br><strong>No limit:</strong> leave empty.</div></span></label>
+                    <input type="number" id="max_opt_val_low" placeholder="No limit" min="1">
+                </div>
             </div>
 
             <div class="form-row">
                 <div class="target-section-label high-label">High Budget</div>
-                <div class="form-group">
+                <div class="form-group compact">
                     <label for="budget_high_min">Budget Min</label>
                     <input type="number" id="budget_high_min" value="100" min="1">
                 </div>
-                <div class="form-group">
+                <div class="form-group compact">
                     <label for="budget_high_max">Budget Max</label>
                     <input type="number" id="budget_high_max" value="150" min="1">
                 </div>
-                <div class="form-group">
-                    <label for="opt_high_min">Optimal Items Min</label>
+                <div class="form-group compact">
+                    <label for="opt_high_min">Opt. Items Min</label>
                     <input type="number" id="opt_high_min" value="7" min="1">
                 </div>
-                <div class="form-group">
-                    <label for="opt_high_max">Optimal Items Max</label>
+                <div class="form-group compact">
+                    <label for="opt_high_max">Opt. Items Max</label>
                     <input type="number" id="opt_high_max" value="9" min="1">
                 </div>
                 <div class="form-group">
@@ -189,6 +195,10 @@
                         <option value="5">5</option>
                         <option value="6">6</option>
                     </select>
+                </div>
+                <div class="form-group">
+                    <label for="max_opt_val_high">Max Optimal Value <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Reject instances where the optimal knapsack value for the high budget exceeds this amount.<br><strong>No limit:</strong> leave empty.</div></span></label>
+                    <input type="number" id="max_opt_val_high" placeholder="No limit" min="1">
                 </div>
             </div>
 

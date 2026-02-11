@@ -286,6 +286,8 @@ const el = {
     optHighMax: document.getElementById('opt_high_max'),
     sahniKLow: document.getElementById('sahni_k_low'),
     sahniKHigh: document.getElementById('sahni_k_high'),
+    maxOptValLow: document.getElementById('max_opt_val_low'),
+    maxOptValHigh: document.getElementById('max_opt_val_high'),
     greedyCapSelect: document.getElementById('greedyCapSelect'),
     forgivenessCapSelect: document.getElementById('forgivenessCapSelect'),
     seed: document.getElementById('seed'),
@@ -369,6 +371,8 @@ function getConfig() {
         optHighMax: parseInt(el.optHighMax.value),
         sahniKLow: el.sahniKLow.value,
         sahniKHigh: el.sahniKHigh.value,
+        maxOptValLow: el.maxOptValLow.value ? parseInt(el.maxOptValLow.value) : null,
+        maxOptValHigh: el.maxOptValHigh.value ? parseInt(el.maxOptValHigh.value) : null,
         greedyCap: el.greedyCapSelect.value,
         forgivenessCap: el.forgivenessCapSelect.value,
         seed: el.seed.value,
@@ -412,6 +416,10 @@ function generateSingleInstance(config, instanceSeed) {
         const capHigh = highResult.capacity;
         const solLow = lowResult.sol || solveKnapsack(items, capLow);
         const solHigh = highResult.sol || solveKnapsack(items, capHigh);
+
+        // Max optimal value constraint
+        if (config.maxOptValLow !== null && solLow.value > config.maxOptValLow) continue;
+        if (config.maxOptValHigh !== null && solHigh.value > config.maxOptValHigh) continue;
 
         // Greedy constraint — check BOTH budgets
         if (greedyActive) {
@@ -704,6 +712,8 @@ function downloadJSON() {
         target_optimal_high: [config.optHighMin, config.optHighMax],
         target_sahni_k_low: config.sahniKLow,
         target_sahni_k_high: config.sahniKHigh,
+        max_optimal_value_low: config.maxOptValLow,
+        max_optimal_value_high: config.maxOptValHigh,
         price_dist: { name: distName(config.weightDist, config.weightInt), params: config.weightParams },
         value_dist: config.correlation === 'independent' ? { name: distName(config.valueDist, config.valueInt), params: config.valueParams } : null,
         correlation: { mode: CORRELATION_NAMES[config.correlation] },
