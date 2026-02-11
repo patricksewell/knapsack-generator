@@ -190,32 +190,50 @@ function computeSahniK(items, capacity, optimalValue) {
 
 // ============================================================
 // Find a valid capacity within [budgetMin, budgetMax] that satisfies
-// optimal-size RANGE [optMin, optMax] + Sahni-k target.
+// optimal-size RANGE [optMin, optMax] + Sahni-k target + optional
+// max optimal value constraint.
 // Returns { capacity, sol, sahniK } or null.
 // ============================================================
-function findCapacityInRange(items, budgetMin, budgetMax, optMin, optMax, targetSahniK) {
+function findCapacityInRange(items, budgetMin, budgetMax, optMin, optMax, targetSahniK, maxOptVal) {
     const sumWeights = items.reduce((s, it) => s + it.weight, 0);
     const lo = Math.max(1, budgetMin);
     const hi = Math.min(budgetMax, sumWeights - 1);
     if (lo > hi) return null;
 
     const anyOptTarget = (optMin !== null && optMax !== null);
+    const hasValueCap = maxOptVal !== null && maxOptVal !== undefined;
 
-    // Collect candidate capacities
+    // Collect candidate capacities (with their solutions)
     let candidates = [];
 
     if (!anyOptTarget) {
         if (targetSahniK === 'no_filter') {
+            // Try middle capacity first, but respect value cap
             const cap = Math.round((lo + hi) / 2);
             const sol = solveKnapsack(items, cap);
-            return { capacity: cap, sol, sahniK: null };
+            if (!hasValueCap || sol.value <= maxOptVal) {
+                return { capacity: cap, sol, sahniK: null };
+            }
+            // Middle didn't work — try all capacities for one under the cap
+            for (let c = lo; c <= hi; c++) {
+                const s = solveKnapsack(items, c);
+                if (!hasValueCap || s.value <= maxOptVal) {
+                    return { capacity: c, sol: s, sahniK: null };
+                }
+            }
+            return null;
         }
         for (let c = lo; c <= hi; c++) candidates.push(c);
     } else {
         // Scan for capacities giving optimal count in [optMin, optMax]
         for (let c = lo; c <= hi; c++) {
             const sol = solveKnapsack(items, c);
-            if (sol.count >= optMin && sol.count <= optMax) candidates.push(c);
+            if (sol.count >= optMin && sol.count <= optMax) {
+                // Also enforce value cap here so we don't carry forward bad candidates
+                if (!hasValueCap || sol.value <= maxOptVal) {
+                    candidates.push(c);
+                }
+            }
         }
     }
 
@@ -405,13 +423,13 @@ function generateSingleInstance(config, instanceSeed) {
 
         const lowResult = findCapacityInRange(
             items, config.budgetLowMin, config.budgetLowMax,
-            config.optLowMin, config.optLowMax, config.sahniKLow
+            config.optLowMin, config.optLowMax, config.sahniKLow, config.maxOptValLow
         );
         if (!lowResult) continue;
 
         const highResult = findCapacityInRange(
             items, config.budgetHighMin, config.budgetHighMax,
-            config.optHighMin, config.optHighMax, config.sahniKHigh
+            config.optHighMin, config.optHighMax, config.sahniKHigh, config.maxOptValHigh
         );
         if (!highResult) continue;
 
@@ -419,10 +437,6 @@ function generateSingleInstance(config, instanceSeed) {
         const capHigh = highResult.capacity;
         const solLow = lowResult.sol || solveKnapsack(items, capLow);
         const solHigh = highResult.sol || solveKnapsack(items, capHigh);
-
-        // Max optimal value constraint
-        if (config.maxOptValLow !== null && solLow.value > config.maxOptValLow) continue;
-        if (config.maxOptValHigh !== null && solHigh.value > config.maxOptValHigh) continue;
 
         // This attempt passed structural + value constraints — remember it
         // as a potential fallback even if greedy/N90 fail below.
