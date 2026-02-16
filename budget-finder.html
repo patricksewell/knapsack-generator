@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Budget Pair Finder</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .dual-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 10px;
+        }
+        .dual-panel {
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            padding: 14px;
+        }
+        .dual-panel h3 {
+            font-size: 0.95rem;
+            color: #fff;
+            margin: -14px -14px 12px;
+            padding: 8px 14px;
+            border-radius: 6px 6px 0 0;
+        }
+        .dual-panel.low-budget h3 { background: #3498db; }
+        .dual-panel.high-budget h3 { background: #27ae60; }
+        .dual-panel .stats-grid {
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        }
+        @media (max-width: 700px) {
+            .dual-grid { grid-template-columns: 1fr; }
+        }
+        tr.optimal-low { background: rgba(52, 152, 219, 0.12) !important; }
+        tr.optimal-low td { color: #2471a3; }
+        tr.optimal-high { background: rgba(39, 174, 96, 0.12) !important; }
+        tr.optimal-high td { color: #1e8449; }
+        tr.optimal-both { background: rgba(155, 89, 182, 0.15) !important; }
+        tr.optimal-both td { color: #7d3c98; }
+        .legend { font-size: 0.78rem; color: #888; margin-bottom: 6px; display: flex; gap: 14px; flex-wrap: wrap; }
+        .legend span { display: inline-flex; align-items: center; gap: 4px; }
+        .legend-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+        .legend-dot.low { background: rgba(52, 152, 219, 0.35); }
+        .legend-dot.high { background: rgba(39, 174, 96, 0.35); }
+        .legend-dot.both { background: rgba(155, 89, 182, 0.35); }
+        .target-section-label { font-size: 0.75rem; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: -4px; grid-column: 1 / -1; }
+        .target-section-label.low-label { color: #3498db; }
+        .target-section-label.high-label { color: #27ae60; }
+
+        /* Item input table */
+        .item-input-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+        .item-input-table th { font-size: 0.78rem; text-transform: uppercase; color: #999; letter-spacing: 0.5px; padding: 4px 8px; text-align: left; border-bottom: 2px solid #e1e8ed; }
+        .item-input-table td { padding: 3px 4px; }
+        .item-input-table td:first-child { text-align: center; color: #999; font-size: 0.85rem; width: 40px; }
+        .item-input-table input[type="number"] { width: 100%; padding: 5px 8px; border: 1px solid #dfe6e9; border-radius: 4px; font-size: 0.9rem; }
+        .item-input-table input[type="number"]:focus { border-color: #74b9ff; outline: none; box-shadow: 0 0 0 2px rgba(116,185,255,0.2); }
+        .item-input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+        .item-col { }
+        .paste-area { width: 100%; min-height: 80px; padding: 8px; border: 2px dashed #dfe6e9; border-radius: 6px; font-family: monospace; font-size: 0.85rem; resize: vertical; margin-bottom: 8px; }
+        .paste-area:focus { border-color: #74b9ff; outline: none; }
+        .parse-btn { background: #636e72; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.82rem; margin-bottom: 12px; }
+        .parse-btn:hover { background: #2d3436; }
+        .tab-bar { display: flex; gap: 0; margin-bottom: 12px; }
+        .tab-btn { flex: 1; padding: 8px; text-align: center; border: 1px solid #dfe6e9; background: #f5f7fa; color: #636e72; cursor: pointer; font-size: 0.82rem; font-weight: 600; transition: all 0.15s; }
+        .tab-btn:first-child { border-radius: 6px 0 0 6px; }
+        .tab-btn:last-child { border-radius: 0 6px 6px 0; }
+        .tab-btn.active { background: #2c3e50; color: #fff; border-color: #2c3e50; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Budget pairs result table */
+        .pairs-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.88rem; }
+        .pairs-table th { background: #2c3e50; color: #fff; padding: 8px 10px; text-align: left; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .pairs-table td { padding: 7px 10px; border-bottom: 1px solid #eee; }
+        .pairs-table tr:hover { background: #f0f4f8; }
+        .pairs-table tr.selected-pair { background: #eaf6ff !important; border-left: 3px solid #3498db; }
+        .pairs-table tr { cursor: pointer; }
+        .progress-bar { height: 6px; background: #ecf0f1; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+        .progress-fill { height: 100%; background: #3498db; transition: width 0.1s; border-radius: 3px; }
+        .search-status { font-size: 0.82rem; color: #888; margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Budget Pair Finder</h1>
+
+        <div class="description-toggle">
+            <button class="desc-btn" onclick="this.parentElement.classList.toggle('open')">
+                <span class="desc-arrow">▶</span> What is this?
+            </button>
+            <div class="desc-content">
+                <p>Enter a <strong>fixed set of 12 items</strong> (price & value) and this tool will search all possible budget values to find <strong>pairs</strong> of budgets — one low (~40) and one high (~90) — that satisfy your filters (optimal items count, Sahni-k, greedy proximity, etc.).</p>
+                <p>Click any found pair to inspect its full solution details.</p>
+            </div>
+        </div>
+
+        <!-- Item Input Section -->
+        <div class="form-section">
+            <h2 style="font-size: 1rem; margin-bottom: 8px;">Items</h2>
+
+            <div class="tab-bar">
+                <button class="tab-btn active" data-tab="manual">Manual Entry</button>
+                <button class="tab-btn" data-tab="paste">Paste</button>
+            </div>
+
+            <div class="tab-content active" id="tab-manual">
+                <div class="item-input-grid">
+                    <div class="item-col">
+                        <table class="item-input-table">
+                            <thead><tr><th>#</th><th>Price</th><th>Value</th></tr></thead>
+                            <tbody id="item_inputs_left"></tbody>
+                        </table>
+                    </div>
+                    <div class="item-col">
+                        <table class="item-input-table">
+                            <thead><tr><th>#</th><th>Price</th><th>Value</th></tr></thead>
+                            <tbody id="item_inputs_right"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-paste">
+                <p style="font-size: 0.82rem; color: #888; margin-bottom: 6px;">Paste items as <code>price,value</code> per line (or <code>price&lt;tab&gt;value</code>). One row per item.</p>
+                <textarea class="paste-area" id="paste_area" placeholder="e.g.&#10;5,20&#10;8,35&#10;3,12&#10;..."></textarea>
+                <button class="parse-btn" id="parse_btn">Parse &amp; Load Items</button>
+            </div>
+        </div>
+
+        <!-- Budget Search Settings -->
+        <div class="form-section">
+            <h2 style="font-size: 1rem; margin-bottom: 8px;">Budget Search Settings</h2>
+            <div class="form-row">
+                <div class="target-section-label low-label">Low Budget Target</div>
+                <div class="form-group">
+                    <label for="budget_low_min">Min</label>
+                    <input type="number" id="budget_low_min" value="30" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="budget_low_max">Max</label>
+                    <input type="number" id="budget_low_max" value="55" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="optimal_size_low">Optimal Items</label>
+                    <select id="optimal_size_low">
+                        <option value="no_filter">No filter</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="sahni_k_low">Sahni-k</label>
+                    <select id="sahni_k_low">
+                        <option value="no_filter">No filter</option>
+                        <option value="0">0</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="target-section-label high-label">High Budget Target</div>
+                <div class="form-group">
+                    <label for="budget_high_min">Min</label>
+                    <input type="number" id="budget_high_min" value="75" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="budget_high_max">Max</label>
+                    <input type="number" id="budget_high_max" value="100" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="optimal_size_high">Optimal Items</label>
+                    <select id="optimal_size_high">
+                        <option value="no_filter">No filter</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="sahni_k_high">Sahni-k</label>
+                    <select id="sahni_k_high">
+                        <option value="no_filter">No filter</option>
+                        <option value="0">0</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="greedyCapSelect">Max greedy proximity <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Reject budget pairs where the greedy solution is too close to optimal.<br>Lower % = stricter.</div></span></label>
+                    <select id="greedyCapSelect">
+                        <option value="no_filter">No filter</option>
+                        <option value="1.00">100%</option>
+                        <option value="0.99">99%</option>
+                        <option value="0.98">98%</option>
+                        <option value="0.97">97%</option>
+                        <option value="0.96">96%</option>
+                        <option value="0.95">95%</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="forgivenessCapSelect">Max N90 share <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Reject pairs where more than this share of feasible combos achieve ≥ 90% of optimal.</div></span></label>
+                    <select id="forgivenessCapSelect">
+                        <option value="no_filter">No filter</option>
+                        <option value="0.005">0.5 %</option>
+                        <option value="0.01">1 %</option>
+                        <option value="0.015">1.5 %</option>
+                        <option value="0.02">2 %</option>
+                        <option value="0.03">3 %</option>
+                        <option value="0.04">4 %</option>
+                        <option value="0.05">5 %</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="minFeasibleInput">Min feasible combos</label>
+                    <input type="number" id="minFeasibleInput" placeholder="No limit" min="1">
+                </div>
+            </div>
+
+            <div class="button-row">
+                <button id="search_btn" class="primary">Search Budget Pairs</button>
+                <button id="stop_btn" style="background:#e74c3c;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;display:none;">Stop</button>
+            </div>
+            <div class="progress-bar" id="progress_bar" style="display:none;"><div class="progress-fill" id="progress_fill"></div></div>
+            <div class="search-status" id="search_status"></div>
+        </div>
+
+        <!-- Results: found pairs -->
+        <div class="form-section hidden" id="pairs_section">
+            <h2 style="font-size: 1rem; margin-bottom: 8px;">Found Budget Pairs <span id="pair_count" style="color:#888;font-weight:400;"></span></h2>
+            <div class="table-container">
+                <table class="pairs-table">
+                    <thead>
+                        <tr>
+                            <th>Low Budget</th>
+                            <th>Opt Value (L)</th>
+                            <th>Opt Items (L)</th>
+                            <th>Sahni-k (L)</th>
+                            <th>High Budget</th>
+                            <th>Opt Value (H)</th>
+                            <th>Opt Items (H)</th>
+                            <th>Sahni-k (H)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pairs_body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Detailed output for selected pair -->
+        <div class="output-section hidden" id="output_section">
+            <h2>Selected Pair Details</h2>
+            <div class="stats-grid" id="stats_grid"></div>
+
+            <div class="dual-grid">
+                <div class="dual-panel low-budget">
+                    <h3>Low Budget</h3>
+                    <div class="stats-grid" id="optimal_low"></div>
+                </div>
+                <div class="dual-panel high-budget">
+                    <h3>High Budget</h3>
+                    <div class="stats-grid" id="optimal_high"></div>
+                </div>
+            </div>
+
+            <h2>Items</h2>
+            <div class="legend">
+                <span><span class="legend-dot low"></span> Low budget only</span>
+                <span><span class="legend-dot high"></span> High budget only</span>
+                <span><span class="legend-dot both"></span> Both</span>
+            </div>
+            <div class="table-container">
+                <table id="preview_table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Price</th>
+                            <th>Value</th>
+                            <th>Value/Price</th>
+                        </tr>
+                    </thead>
+                    <tbody id="preview_body"></tbody>
+                </table>
+            </div>
+
+            <div class="button-row" style="margin-top: 12px;">
+                <button id="download_json_btn">Download JSON</button>
+                <button id="copy_json_btn">Copy JSON</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="budget-finder-app.js"></script>
+</body>
+</html>
