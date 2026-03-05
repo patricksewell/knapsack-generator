@@ -1,6 +1,6 @@
 // ============================================================
-// Batch Dual-Budget Knapsack Generator
-// Generates multiple instances with compact price,value output.
+// Batch Specific Dual-Budget Knapsack Generator
+// Two item categories (expensive + cheap) with separate distributions.
 // ============================================================
 
 // Seeded PRNG (Mulberry32)
@@ -63,94 +63,115 @@ function distName(type, isInt) {
 
 const CORRELATION_NAMES = { 'independent': 'Independent', 'positive': 'PositiveLinear', 'negative': 'NegativeLinear' };
 
-// Generate items
-function generateItems(config, seedStr) {
-    const rng = mulberry32(hashSeed(seedStr));
-    const weightSampler = getSampler(config.weightDist, config.weightParams, config.weightInt);
-    const valueSampler = getSampler(config.valueDist, config.valueParams, config.valueInt);
+// ============================================================
+// Generate a category of items from its own distribution
+// ============================================================
+function generateCategoryItems(rng, count, weightDist, weightParams, weightInt, valueDist, valueParams, valueInt, correlation, alpha, noiseSd) {
+    const weightSampler = getSampler(weightDist, weightParams, weightInt);
+    const valueSampler = getSampler(valueDist, valueParams, valueInt);
 
-    const premiumCount = config.premiumCount || 0;
-    const regularCount = config.nItems - premiumCount;
-
-    // Generate regular items first
-    const regularItems = [];
+    const items = [];
     let maxWeight = 0;
 
-    for (let i = 0; i < regularCount; i++) {
+    for (let i = 0; i < count; i++) {
         const weight = weightSampler(rng);
-        regularItems.push({ id: 0, weight, value: 0, premium: false });
+        items.push({ id: 0, weight, value: 0 });
         maxWeight = Math.max(maxWeight, weight);
     }
 
-    for (let i = 0; i < regularCount; i++) {
+    for (let i = 0; i < count; i++) {
         let value;
-        if (config.correlation === 'independent') {
+        if (correlation === 'independent') {
             value = valueSampler(rng);
-        } else if (config.correlation === 'positive') {
-            value = config.alpha * regularItems[i].weight + config.noiseSd * boxMuller(rng);
-            value = config.valueInt ? Math.round(value) : parseFloat(value.toFixed(2));
-        } else if (config.correlation === 'negative') {
-            value = config.alpha * (maxWeight - regularItems[i].weight) + config.noiseSd * boxMuller(rng);
-            value = config.valueInt ? Math.round(value) : parseFloat(value.toFixed(2));
+        } else if (correlation === 'positive') {
+            value = alpha * items[i].weight + noiseSd * boxMuller(rng);
+            value = valueInt ? Math.round(value) : parseFloat(value.toFixed(2));
+        } else if (correlation === 'negative') {
+            value = alpha * (maxWeight - items[i].weight) + noiseSd * boxMuller(rng);
+            value = valueInt ? Math.round(value) : parseFloat(value.toFixed(2));
         }
-        regularItems[i].value = Math.max(config.valueInt ? 1 : 0.01, value);
+        items[i].value = Math.max(valueInt ? 1 : 0.01, value);
     }
 
-    // Ratio spread (applied only to regular items)
+    return items;
+}
+
+// ============================================================
+// Generate items: expensive + cheap, shuffled together
+// ============================================================
+function generateItems(config, seedStr) {
+    const rng = mulberry32(hashSeed(seedStr));
+
+    const chpCount = config.nItems - config.expCount;
+
+    // Generate expensive items
+    const expItems = generateCategoryItems(
+        rng, config.expCount,
+        config.expWeightDist, config.expWeightParams, config.expWeightInt,
+        config.expValueDist, config.expValueParams, config.expValueInt,
+        config.expCorrelation, config.expAlpha, config.expNoiseSd
+    );
+    expItems.forEach(it => it.category = 'expensive');
+
+    // Generate cheap items
+    const chpItems = generateCategoryItems(
+        rng, chpCount,
+        config.chpWeightDist, config.chpWeightParams, config.chpWeightInt,
+        config.chpValueDist, config.chpValueParams, config.chpValueInt,
+        config.chpCorrelation, config.chpAlpha, config.chpNoiseSd
+    );
+    chpItems.forEach(it => it.category = 'cheap');
+
+    // Apply ratio spread within each category separately
     if (config.ratioSpread !== 'medium') {
         const lambda = config.ratioSpread === 'low' ? 0.3 : 2.0;
-        const ratios = regularItems.map(it => it.value / it.weight);
-        const meanR = ratios.reduce((a, b) => a + b, 0) / ratios.length;
-        for (let i = 0; i < regularItems.length; i++) {
-            const nr = Math.max(0.01, meanR + lambda * (ratios[i] - meanR));
-            let nv = nr * regularItems[i].weight;
-            regularItems[i].value = config.valueInt ? Math.max(1, Math.round(nv)) : Math.max(0.01, parseFloat(nv.toFixed(2)));
+        for (const catItems of [expItems, chpItems]) {
+            if (catItems.length === 0) continue;
+            const ratios = catItems.map(it => it.value / it.weight);
+            const meanR = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+            for (let i = 0; i < catItems.length; i++) {
+                const nr = Math.max(0.01, meanR + lambda * (ratios[i] - meanR));
+                const isInt = catItems[i].category === 'expensive' ? config.expValueInt : config.chpValueInt;
+                let nv = nr * catItems[i].weight;
+                catItems[i].value = isInt ? Math.max(1, Math.round(nv)) : Math.max(0.01, parseFloat(nv.toFixed(2)));
+            }
         }
     }
 
-    // Integer ratios (applied only to regular items)
+    // Integer ratios
     if (config.integerRatios) {
-        for (let i = 0; i < regularItems.length; i++) {
-            const ratio = Math.max(1, Math.round(regularItems[i].value / regularItems[i].weight));
-            regularItems[i].value = ratio * regularItems[i].weight;
+        for (const catItems of [expItems, chpItems]) {
+            for (let i = 0; i < catItems.length; i++) {
+                const ratio = Math.max(1, Math.round(catItems[i].value / catItems[i].weight));
+                catItems[i].value = ratio * catItems[i].weight;
+            }
         }
     }
 
-    // Fraction ratios: ensure no regular item has an integer value/price ratio
+    // Fraction ratios: ensure no item has an integer V/P ratio
     if (config.fractionRatios && !config.integerRatios) {
-        for (let i = 0; i < regularItems.length; i++) {
-            const ratio = regularItems[i].value / regularItems[i].weight;
-            if (Number.isInteger(ratio)) {
-                // Nudge value by +1 or -1 to break the integer ratio
-                const nudged = regularItems[i].value + 1;
-                regularItems[i].value = Math.max(1, nudged);
-                // If still integer (unlikely), nudge the other way
-                if (Number.isInteger(regularItems[i].value / regularItems[i].weight)) {
-                    regularItems[i].value = Math.max(1, regularItems[i].value - 2);
+        for (const catItems of [expItems, chpItems]) {
+            for (let i = 0; i < catItems.length; i++) {
+                const ratio = catItems[i].value / catItems[i].weight;
+                if (Number.isInteger(ratio)) {
+                    const nudged = catItems[i].value + 1;
+                    catItems[i].value = Math.max(1, nudged);
+                    if (Number.isInteger(catItems[i].value / catItems[i].weight)) {
+                        catItems[i].value = Math.max(1, catItems[i].value - 2);
+                    }
                 }
             }
         }
     }
 
-    // Create premium items
-    const premiumItems = [];
-    for (let i = 0; i < premiumCount; i++) {
-        premiumItems.push({
-            id: 0,
-            weight: config.premiumPrice,
-            value: config.premiumValue,
-            premium: true
-        });
+    // Merge and Fisher-Yates shuffle
+    const items = [...expItems, ...chpItems];
+    for (let i = items.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [items[i], items[j]] = [items[j], items[i]];
     }
 
-    // Merge: insert premium items at random positions among regular items
-    const items = [...regularItems];
-    for (const pItem of premiumItems) {
-        const pos = Math.floor(rng() * (items.length + 1));
-        items.splice(pos, 0, pItem);
-    }
-
-    // Assign final sequential IDs
+    // Assign sequential IDs
     for (let i = 0; i < items.length; i++) {
         items[i].id = i + 1;
     }
@@ -158,7 +179,9 @@ function generateItems(config, seedStr) {
     return items;
 }
 
+// ============================================================
 // DP knapsack solver
+// ============================================================
 function solveKnapsack(items, capacity) {
     const n = items.length;
     const dp = Array.from({ length: n + 1 }, () => new Int32Array(capacity + 1));
@@ -192,7 +215,9 @@ function solveKnapsack(items, capacity) {
     };
 }
 
+// ============================================================
 // Sahni-k
+// ============================================================
 function computeSahniK(items, capacity, optimalValue) {
     const n = items.length;
     const sortedIndices = items.map((_, i) => i).sort((a, b) =>
@@ -232,10 +257,7 @@ function computeSahniK(items, capacity, optimalValue) {
 }
 
 // ============================================================
-// Find a valid capacity within [budgetMin, budgetMax] that satisfies
-// optimal-size RANGE [optMin, optMax] + Sahni-k target + optional
-// optimal value range [minOptVal, maxOptVal].
-// Returns { capacity, sol, sahniK } or null.
+// Find a valid capacity within [budgetMin, budgetMax]
 // ============================================================
 function findCapacityInRange(items, budgetMin, budgetMax, optMin, optMax, targetSahniK, minOptVal, maxOptVal) {
     const sumWeights = items.reduce((s, it) => s + it.weight, 0);
@@ -253,18 +275,13 @@ function findCapacityInRange(items, budgetMin, budgetMax, optMin, optMax, target
         return true;
     }
 
-    // Collect candidate capacities whose optimal value falls in range
     let candidates = [];
-
     for (let c = lo; c <= hi; c++) {
         const sol = solveKnapsack(items, c);
-        // Enforce optimal item count range (if set)
         if (anyOptTarget && (sol.count < optMin || sol.count > optMax)) continue;
-        // Enforce optimal value range (if set)
         if (!valueInRange(sol.value)) continue;
         candidates.push(c);
     }
-
     if (candidates.length === 0) return null;
 
     if (targetSahniK === 'no_filter') {
@@ -277,11 +294,8 @@ function findCapacityInRange(items, budgetMin, budgetMax, optMin, optMax, target
     for (const c of candidates) {
         const sol = solveKnapsack(items, c);
         const k = computeSahniK(items, c, sol.value);
-        if (k === targetK) {
-            return { capacity: c, sol, sahniK: k };
-        }
+        if (k === targetK) return { capacity: c, sol, sahniK: k };
     }
-
     return null;
 }
 
@@ -322,9 +336,57 @@ function countBundleStats(items, capacity, optValue, alphaPercent) {
 const el = {
     nInstances: document.getElementById('n_instances'),
     nItems: document.getElementById('n_items'),
-    premiumCount: document.getElementById('premium_count'),
-    premiumPrice: document.getElementById('premium_price'),
-    premiumValue: document.getElementById('premium_value'),
+    // Expensive items
+    expCount: document.getElementById('exp_count'),
+    expWeightDist: document.getElementById('exp_weight_dist'),
+    expWeightInt: document.getElementById('exp_weight_int'),
+    expWeightMin: document.getElementById('exp_weight_min'),
+    expWeightMax: document.getElementById('exp_weight_max'),
+    expWeightMean: document.getElementById('exp_weight_mean'),
+    expWeightSd: document.getElementById('exp_weight_sd'),
+    expWeightMu: document.getElementById('exp_weight_mu'),
+    expWeightSigma: document.getElementById('exp_weight_sigma'),
+    expValueDist: document.getElementById('exp_value_dist'),
+    expValueInt: document.getElementById('exp_value_int'),
+    expValueMin: document.getElementById('exp_value_min'),
+    expValueMax: document.getElementById('exp_value_max'),
+    expValueMean: document.getElementById('exp_value_mean'),
+    expValueSd: document.getElementById('exp_value_sd'),
+    expValueMu: document.getElementById('exp_value_mu'),
+    expValueSigma: document.getElementById('exp_value_sigma'),
+    expCorrelation: document.getElementById('exp_correlation'),
+    expAlpha: document.getElementById('exp_alpha'),
+    expNoiseSd: document.getElementById('exp_noise_sd'),
+    expOptLowMin: document.getElementById('exp_opt_low_min'),
+    expOptLowMax: document.getElementById('exp_opt_low_max'),
+    expOptHighMin: document.getElementById('exp_opt_high_min'),
+    expOptHighMax: document.getElementById('exp_opt_high_max'),
+    // Cheap items
+    chpCount: document.getElementById('chp_count'),
+    chpWeightDist: document.getElementById('chp_weight_dist'),
+    chpWeightInt: document.getElementById('chp_weight_int'),
+    chpWeightMin: document.getElementById('chp_weight_min'),
+    chpWeightMax: document.getElementById('chp_weight_max'),
+    chpWeightMean: document.getElementById('chp_weight_mean'),
+    chpWeightSd: document.getElementById('chp_weight_sd'),
+    chpWeightMu: document.getElementById('chp_weight_mu'),
+    chpWeightSigma: document.getElementById('chp_weight_sigma'),
+    chpValueDist: document.getElementById('chp_value_dist'),
+    chpValueInt: document.getElementById('chp_value_int'),
+    chpValueMin: document.getElementById('chp_value_min'),
+    chpValueMax: document.getElementById('chp_value_max'),
+    chpValueMean: document.getElementById('chp_value_mean'),
+    chpValueSd: document.getElementById('chp_value_sd'),
+    chpValueMu: document.getElementById('chp_value_mu'),
+    chpValueSigma: document.getElementById('chp_value_sigma'),
+    chpCorrelation: document.getElementById('chp_correlation'),
+    chpAlpha: document.getElementById('chp_alpha'),
+    chpNoiseSd: document.getElementById('chp_noise_sd'),
+    chpOptLowMin: document.getElementById('chp_opt_low_min'),
+    chpOptLowMax: document.getElementById('chp_opt_low_max'),
+    chpOptHighMin: document.getElementById('chp_opt_high_min'),
+    chpOptHighMax: document.getElementById('chp_opt_high_max'),
+    // Budget constraints
     budgetLowMin: document.getElementById('budget_low_min'),
     budgetLowMax: document.getElementById('budget_low_max'),
     budgetHighMin: document.getElementById('budget_high_min'),
@@ -339,33 +401,16 @@ const el = {
     maxOptValLow: document.getElementById('max_opt_val_low'),
     minOptValHigh: document.getElementById('min_opt_val_high'),
     maxOptValHigh: document.getElementById('max_opt_val_high'),
+    // Global settings
     greedyCapSelect: document.getElementById('greedyCapSelect'),
     forgivenessCapSelect: document.getElementById('forgivenessCapSelect'),
     minFeasibleInput: document.getElementById('minFeasibleInput'),
     maxRatioInput: document.getElementById('maxRatioInput'),
     seed: document.getElementById('seed'),
-    weightDist: document.getElementById('weight_dist'),
-    valueDist: document.getElementById('value_dist'),
-    correlation: document.getElementById('correlation'),
-    weightInt: document.getElementById('weight_int'),
-    valueInt: document.getElementById('value_int'),
-    weightMin: document.getElementById('weight_min'),
-    weightMax: document.getElementById('weight_max'),
-    weightMean: document.getElementById('weight_mean'),
-    weightSd: document.getElementById('weight_sd'),
-    weightMu: document.getElementById('weight_mu'),
-    weightSigma: document.getElementById('weight_sigma'),
-    valueMin: document.getElementById('value_min'),
-    valueMax: document.getElementById('value_max'),
-    valueMean: document.getElementById('value_mean'),
-    valueSd: document.getElementById('value_sd'),
-    valueMu: document.getElementById('value_mu'),
-    valueSigma: document.getElementById('value_sigma'),
-    alpha: document.getElementById('alpha'),
-    noiseSd: document.getElementById('noise_sd'),
     ratioSpread: document.getElementById('ratio_spread'),
     integerRatios: document.getElementById('integer_ratios'),
     fractionRatios: document.getElementById('fraction_ratios'),
+    // Buttons & output
     generateBtn: document.getElementById('generate_btn'),
     copyAllBtn: document.getElementById('copy_all_btn'),
     downloadJsonBtn: document.getElementById('download_json_btn'),
@@ -373,13 +418,20 @@ const el = {
     resultsContainer: document.getElementById('results_container'),
     progressFill: document.getElementById('progress_fill'),
     progressBar: document.getElementById('progress_bar'),
-    weightParams: document.getElementById('weight_params'),
-    valueParams: document.getElementById('value_params'),
-    correlationParams: document.getElementById('correlation_params')
+    // Dist param containers
+    expWeightParams: document.getElementById('exp_weight_params'),
+    expValueParams: document.getElementById('exp_value_params'),
+    expCorrelationParams: document.getElementById('exp_correlation_params'),
+    chpWeightParams: document.getElementById('chp_weight_params'),
+    chpValueParams: document.getElementById('chp_value_params'),
+    chpCorrelationParams: document.getElementById('chp_correlation_params')
 };
 
 let allResults = [];
 
+// ============================================================
+// UI helpers — generic dist param show/hide
+// ============================================================
 function updateDistParams(selectId, paramsContainerId) {
     const dist = document.getElementById(selectId).value;
     const container = document.getElementById(paramsContainerId);
@@ -387,37 +439,100 @@ function updateDistParams(selectId, paramsContainerId) {
     container.querySelector(`.${dist}-params`).classList.remove('hidden');
 }
 
-function updateCorrelationParams() {
-    const corr = el.correlation.value;
-    const corrDiv = el.correlationParams.querySelector('.correlation-params');
-    const vDistG = el.valueDist.closest('.form-group');
-    const vParamsG = el.valueParams;
-    if (corr === 'independent') { corrDiv.classList.add('hidden'); vDistG.classList.remove('hidden'); vParamsG.classList.remove('hidden'); }
-    else { corrDiv.classList.remove('hidden'); vDistG.classList.add('hidden'); vParamsG.classList.add('hidden'); }
+function updateCorrelationParams(corrSelect, corrParamsContainer, vDistGroup, vParamsContainer) {
+    const corr = corrSelect.value;
+    const corrDiv = corrParamsContainer.querySelector('.correlation-params');
+    if (corr === 'independent') {
+        corrDiv.classList.add('hidden');
+        if (vDistGroup) vDistGroup.classList.remove('hidden');
+        if (vParamsContainer) vParamsContainer.classList.remove('hidden');
+    } else {
+        corrDiv.classList.remove('hidden');
+        if (vDistGroup) vDistGroup.classList.add('hidden');
+        if (vParamsContainer) vParamsContainer.classList.add('hidden');
+    }
 }
 
-function getConfig() {
-    const weightDist = el.weightDist.value;
-    const valueDist = el.valueDist.value;
-    let weightParams, valueParams;
+// Update cheap count when expensive count or total items changes
+function updateCheapCount() {
+    const total = parseInt(el.nItems.value) || 0;
+    const exp = parseInt(el.expCount.value) || 0;
+    el.chpCount.value = Math.max(0, total - exp);
+}
 
+// ============================================================
+// Read distribution params from DOM for a given prefix
+// ============================================================
+function readDistParams(prefix) {
+    const distEl = document.getElementById(`${prefix}_weight_dist`);
+    const weightDist = distEl.value;
+    const valueDist = document.getElementById(`${prefix}_value_dist`).value;
+    const weightInt = document.getElementById(`${prefix}_weight_int`).checked;
+    const valueInt = document.getElementById(`${prefix}_value_int`).checked;
+
+    let weightParams;
     switch (weightDist) {
-        case 'uniform': weightParams = { min: parseInt(el.weightMin.value), max: parseInt(el.weightMax.value) }; break;
-        case 'normal': weightParams = { mean: parseFloat(el.weightMean.value), sd: parseFloat(el.weightSd.value) }; break;
-        case 'lognormal': weightParams = { mu: parseFloat(el.weightMu.value), sigma: parseFloat(el.weightSigma.value) }; break;
+        case 'uniform': weightParams = { min: parseInt(document.getElementById(`${prefix}_weight_min`).value), max: parseInt(document.getElementById(`${prefix}_weight_max`).value) }; break;
+        case 'normal': weightParams = { mean: parseFloat(document.getElementById(`${prefix}_weight_mean`).value), sd: parseFloat(document.getElementById(`${prefix}_weight_sd`).value) }; break;
+        case 'lognormal': weightParams = { mu: parseFloat(document.getElementById(`${prefix}_weight_mu`).value), sigma: parseFloat(document.getElementById(`${prefix}_weight_sigma`).value) }; break;
     }
+
+    let valueParams;
     switch (valueDist) {
-        case 'uniform': valueParams = { min: parseInt(el.valueMin.value), max: parseInt(el.valueMax.value) }; break;
-        case 'normal': valueParams = { mean: parseFloat(el.valueMean.value), sd: parseFloat(el.valueSd.value) }; break;
-        case 'lognormal': valueParams = { mu: parseFloat(el.valueMu.value), sigma: parseFloat(el.valueSigma.value) }; break;
+        case 'uniform': valueParams = { min: parseInt(document.getElementById(`${prefix}_value_min`).value), max: parseInt(document.getElementById(`${prefix}_value_max`).value) }; break;
+        case 'normal': valueParams = { mean: parseFloat(document.getElementById(`${prefix}_value_mean`).value), sd: parseFloat(document.getElementById(`${prefix}_value_sd`).value) }; break;
+        case 'lognormal': valueParams = { mu: parseFloat(document.getElementById(`${prefix}_value_mu`).value), sigma: parseFloat(document.getElementById(`${prefix}_value_sigma`).value) }; break;
     }
+
+    const correlation = document.getElementById(`${prefix}_correlation`).value;
+    const alpha = parseFloat(document.getElementById(`${prefix}_alpha`).value);
+    const noiseSd = parseFloat(document.getElementById(`${prefix}_noise_sd`).value);
+
+    return { weightDist, weightParams, weightInt, valueDist, valueParams, valueInt, correlation, alpha, noiseSd };
+}
+
+// ============================================================
+// Build full config from DOM
+// ============================================================
+function getConfig() {
+    const expDist = readDistParams('exp');
+    const chpDist = readDistParams('chp');
 
     return {
         nInstances: parseInt(el.nInstances.value),
         nItems: parseInt(el.nItems.value),
-        premiumCount: parseInt(el.premiumCount.value) || 0,
-        premiumPrice: parseInt(el.premiumPrice.value) || 20,
-        premiumValue: parseInt(el.premiumValue.value) || 100,
+        expCount: parseInt(el.expCount.value) || 0,
+        // Expensive distributions
+        expWeightDist: expDist.weightDist,
+        expWeightParams: expDist.weightParams,
+        expWeightInt: expDist.weightInt,
+        expValueDist: expDist.valueDist,
+        expValueParams: expDist.valueParams,
+        expValueInt: expDist.valueInt,
+        expCorrelation: expDist.correlation,
+        expAlpha: expDist.alpha,
+        expNoiseSd: expDist.noiseSd,
+        // Expensive optimal targets
+        expOptLowMin: el.expOptLowMin.value !== '' ? parseInt(el.expOptLowMin.value) : null,
+        expOptLowMax: el.expOptLowMax.value !== '' ? parseInt(el.expOptLowMax.value) : null,
+        expOptHighMin: el.expOptHighMin.value !== '' ? parseInt(el.expOptHighMin.value) : null,
+        expOptHighMax: el.expOptHighMax.value !== '' ? parseInt(el.expOptHighMax.value) : null,
+        // Cheap distributions
+        chpWeightDist: chpDist.weightDist,
+        chpWeightParams: chpDist.weightParams,
+        chpWeightInt: chpDist.weightInt,
+        chpValueDist: chpDist.valueDist,
+        chpValueParams: chpDist.valueParams,
+        chpValueInt: chpDist.valueInt,
+        chpCorrelation: chpDist.correlation,
+        chpAlpha: chpDist.alpha,
+        chpNoiseSd: chpDist.noiseSd,
+        // Cheap optimal targets
+        chpOptLowMin: el.chpOptLowMin.value !== '' ? parseInt(el.chpOptLowMin.value) : null,
+        chpOptLowMax: el.chpOptLowMax.value !== '' ? parseInt(el.chpOptLowMax.value) : null,
+        chpOptHighMin: el.chpOptHighMin.value !== '' ? parseInt(el.chpOptHighMin.value) : null,
+        chpOptHighMax: el.chpOptHighMax.value !== '' ? parseInt(el.chpOptHighMax.value) : null,
+        // Budget constraints
         budgetLowMin: parseInt(el.budgetLowMin.value),
         budgetLowMax: parseInt(el.budgetLowMax.value),
         budgetHighMin: parseInt(el.budgetHighMin.value),
@@ -432,23 +547,21 @@ function getConfig() {
         maxOptValLow: el.maxOptValLow.value ? parseInt(el.maxOptValLow.value) : null,
         minOptValHigh: el.minOptValHigh.value ? parseInt(el.minOptValHigh.value) : null,
         maxOptValHigh: el.maxOptValHigh.value ? parseInt(el.maxOptValHigh.value) : null,
+        // Global settings
         greedyCap: el.greedyCapSelect.value,
         forgivenessCap: el.forgivenessCapSelect.value,
         minFeasible: el.minFeasibleInput.value ? parseInt(el.minFeasibleInput.value) : null,
         maxRatio: el.maxRatioInput.value ? parseFloat(el.maxRatioInput.value) : null,
         seed: el.seed.value,
-        weightDist, weightParams, weightInt: el.weightInt.checked,
-        valueDist, valueParams, valueInt: el.valueInt.checked,
-        correlation: el.correlation.value,
-        alpha: parseFloat(el.alpha.value),
-        noiseSd: parseFloat(el.noiseSd.value),
         ratioSpread: el.ratioSpread.value,
         integerRatios: el.integerRatios.checked,
         fractionRatios: el.fractionRatios.checked
     };
 }
 
-// Generate a single instance with given base seed. Returns result object or null.
+// ============================================================
+// Generate a single instance
+// ============================================================
 function generateSingleInstance(config, instanceSeed) {
     const MAX_ATTEMPTS = 10000;
 
@@ -458,16 +571,28 @@ function generateSingleInstance(config, instanceSeed) {
     const forgivenessShare = forgivenessActive ? parseFloat(config.forgivenessCap) : Infinity;
     const canBruteForceN90 = config.nItems <= 20;
 
-    // Track best near-miss: passed structural + value-cap but failed greedy/N90
+    // Category composition filters active?
+    const hasExpLow = config.expOptLowMin !== null || config.expOptLowMax !== null;
+    const hasExpHigh = config.expOptHighMin !== null || config.expOptHighMax !== null;
+    const hasChpLow = config.chpOptLowMin !== null || config.chpOptLowMax !== null;
+    const hasChpHigh = config.chpOptHighMin !== null || config.chpOptHighMax !== null;
+    const hasCategoryFilter = hasExpLow || hasExpHigh || hasChpLow || hasChpHigh;
+
+    function checkCategoryRange(count, min, max) {
+        if (min !== null && count < min) return false;
+        if (max !== null && count > max) return false;
+        return true;
+    }
+
     let bestFallback = null;
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         const usedSeed = attempt === 0 ? instanceSeed : instanceSeed + '_' + attempt;
         const items = generateItems(config, usedSeed);
 
-        // Max V/P ratio filter (applied to regular items only)
+        // Max V/P ratio filter
         if (config.maxRatio !== null) {
-            const exceeded = items.some(it => !it.premium && (it.value / it.weight) > config.maxRatio);
+            const exceeded = items.some(it => (it.value / it.weight) > config.maxRatio);
             if (exceeded) continue;
         }
 
@@ -488,20 +613,32 @@ function generateSingleInstance(config, instanceSeed) {
         const solLow = lowResult.sol || solveKnapsack(items, capLow);
         const solHigh = highResult.sol || solveKnapsack(items, capHigh);
 
-        // This attempt passed structural + value constraints — remember it
-        // as a potential fallback even if greedy/N90 fail below.
+        // Category composition filter
+        if (hasCategoryFilter) {
+            const expInLow = solLow.items.filter(it => it.category === 'expensive').length;
+            const chpInLow = solLow.items.filter(it => it.category === 'cheap').length;
+            const expInHigh = solHigh.items.filter(it => it.category === 'expensive').length;
+            const chpInHigh = solHigh.items.filter(it => it.category === 'cheap').length;
+
+            if (!checkCategoryRange(expInLow, config.expOptLowMin, config.expOptLowMax)) continue;
+            if (!checkCategoryRange(chpInLow, config.chpOptLowMin, config.chpOptLowMax)) continue;
+            if (!checkCategoryRange(expInHigh, config.expOptHighMin, config.expOptHighMax)) continue;
+            if (!checkCategoryRange(chpInHigh, config.chpOptHighMin, config.chpOptHighMax)) continue;
+        }
+
+        // Remember as fallback
         if (!bestFallback) {
             bestFallback = { usedSeed, items, lowResult, highResult, capLow, capHigh, solLow, solHigh };
         }
 
-        // Greedy constraint — check BOTH budgets
+        // Greedy constraint
         if (greedyActive) {
             const gLow = solLow.value > 0 ? greedyValue(items, capLow) / solLow.value : 0;
             const gHigh = solHigh.value > 0 ? greedyValue(items, capHigh) / solHigh.value : 0;
             if (gLow >= greedyThreshold || gHigh >= greedyThreshold) continue;
         }
 
-        // Forgiveness constraint (N90 share) + min feasible — check BOTH budgets
+        // Forgiveness + min feasible
         if (canBruteForceN90) {
             const bsL = countBundleStats(items, capLow, solLow.value, 90);
             const bsH = countBundleStats(items, capHigh, solHigh.value, 90);
@@ -513,42 +650,31 @@ function generateSingleInstance(config, instanceSeed) {
             if (config.minFeasible !== null && (bsL.feasible < config.minFeasible || bsH.feasible < config.minFeasible)) continue;
         }
 
-        // Compute Sahni-k if not done yet
+        // Compute display stats
         const sahniLow = lowResult.sahniK !== null ? lowResult.sahniK : computeSahniK(items, capLow, solLow.value);
         const sahniHigh = highResult.sahniK !== null ? highResult.sahniK : computeSahniK(items, capHigh, solHigh.value);
-
-        // Compute greedy ratio and N90 for display
         const greedyRatioLow = solLow.value > 0 ? greedyValue(items, capLow) / solLow.value : 0;
         const greedyRatioHigh = solHigh.value > 0 ? greedyValue(items, capHigh) / solHigh.value : 0;
+
         let n90Low = null, n90High = null, feasibleLow = null, feasibleHigh = null;
         if (canBruteForceN90) {
             const bsLow = countBundleStats(items, capLow, solLow.value, 90);
             const bsHigh = countBundleStats(items, capHigh, solHigh.value, 90);
-            n90Low = bsLow.n90;
-            n90High = bsHigh.n90;
-            feasibleLow = bsLow.feasible;
-            feasibleHigh = bsHigh.feasible;
+            n90Low = bsLow.n90; n90High = bsHigh.n90;
+            feasibleLow = bsLow.feasible; feasibleHigh = bsHigh.feasible;
         }
 
         return {
-            seed: usedSeed,
-            items,
-            budgetLow: capLow,
-            budgetHigh: capHigh,
-            optLow: solLow,
-            optHigh: solHigh,
-            sahniLow,
-            sahniHigh,
-            greedyRatioLow,
-            greedyRatioHigh,
-            n90Low,
-            n90High,
-            feasibleLow,
-            feasibleHigh
+            seed: usedSeed, items,
+            budgetLow: capLow, budgetHigh: capHigh,
+            optLow: solLow, optHigh: solHigh,
+            sahniLow, sahniHigh,
+            greedyRatioLow, greedyRatioHigh,
+            n90Low, n90High, feasibleLow, feasibleHigh
         };
     }
 
-    // Fallback — prefer a near-miss that at least satisfies the value cap
+    // Fallback
     const fb = bestFallback || null;
     const fbItems = fb ? fb.items : generateItems(config, instanceSeed);
     const fbSumW = fbItems.reduce((s, it) => s + it.weight, 0);
@@ -564,64 +690,66 @@ function generateSingleInstance(config, instanceSeed) {
     if (canBruteForceN90) {
         const bsLow = countBundleStats(fbItems, fbCapLow, fbSolLow.value, 90);
         const bsHigh = countBundleStats(fbItems, fbCapHigh, fbSolHigh.value, 90);
-        n90Low = bsLow.n90;
-        n90High = bsHigh.n90;
-        feasibleLow = bsLow.feasible;
-        feasibleHigh = bsHigh.feasible;
+        n90Low = bsLow.n90; n90High = bsHigh.n90;
+        feasibleLow = bsLow.feasible; feasibleHigh = bsHigh.feasible;
     }
 
     const fbSahniLow = fb && fb.lowResult.sahniK !== null ? fb.lowResult.sahniK : computeSahniK(fbItems, fbCapLow, fbSolLow.value);
     const fbSahniHigh = fb && fb.highResult.sahniK !== null ? fb.highResult.sahniK : computeSahniK(fbItems, fbCapHigh, fbSolHigh.value);
 
     return {
-        seed: fbSeed,
-        items: fbItems,
-        budgetLow: fbCapLow,
-        budgetHigh: fbCapHigh,
-        optLow: fbSolLow,
-        optHigh: fbSolHigh,
-        sahniLow: fbSahniLow,
-        sahniHigh: fbSahniHigh,
-        greedyRatioLow,
-        greedyRatioHigh,
-        n90Low,
-        n90High,
-        feasibleLow,
-        feasibleHigh,
-        warning: 'Could not satisfy all constraints after 10,000 attempts.' + (fb ? ' (value cap respected, greedy/N90 relaxed)' : '')
+        seed: fbSeed, items: fbItems,
+        budgetLow: fbCapLow, budgetHigh: fbCapHigh,
+        optLow: fbSolLow, optHigh: fbSolHigh,
+        sahniLow: fbSahniLow, sahniHigh: fbSahniHigh,
+        greedyRatioLow, greedyRatioHigh,
+        n90Low, n90High, feasibleLow, feasibleHigh,
+        warning: 'Could not satisfy all constraints after 10,000 attempts.' + (fb ? ' (structural constraints respected, greedy/N90 relaxed)' : '')
     };
 }
 
-// Format compact price,value text for an instance
+// ============================================================
+// Format helpers
+// ============================================================
 function formatCompact(result) {
-    return result.items.map(it => `${it.weight},${it.value}${it.premium ? '  # premium' : ''}`).join('\n');
+    return result.items.map(it => `${it.weight},${it.value}  # ${it.category}`).join('\n');
 }
 
-// Build full text block for one instance (header + price,value)
 function formatInstanceBlock(result, index) {
     const lines = [];
-    const premiumCount = result.items.filter(it => it.premium).length;
-    lines.push(`# Instance ${index + 1}  |  seed: ${result.seed}${premiumCount > 0 ? '  |  premium items: ' + premiumCount : ''}`);
-    let lowLine = `# Low budget: ${result.budgetLow}  |  optimal: ${result.optLow.count} items (value ${result.optLow.value})  |  Sahni-k: ${result.sahniLow}  |  Greedy: ${(result.greedyRatioLow * 100).toFixed(1)}%`;
+    const expCount = result.items.filter(it => it.category === 'expensive').length;
+    const chpCount = result.items.filter(it => it.category === 'cheap').length;
+    const expInLow = result.optLow.items.filter(it => it.category === 'expensive').length;
+    const chpInLow = result.optLow.items.filter(it => it.category === 'cheap').length;
+    const expInHigh = result.optHigh.items.filter(it => it.category === 'expensive').length;
+    const chpInHigh = result.optHigh.items.filter(it => it.category === 'cheap').length;
+
+    lines.push(`# Instance ${index + 1}  |  seed: ${result.seed}  |  ${expCount} expensive, ${chpCount} cheap`);
+
+    let lowLine = `# Low budget: ${result.budgetLow}  |  optimal: ${result.optLow.count} items (value ${result.optLow.value})  [${expInLow}E + ${chpInLow}C]  |  Sahni-k: ${result.sahniLow}  |  Greedy: ${(result.greedyRatioLow * 100).toFixed(1)}%`;
     if (result.feasibleLow !== null) lowLine += `  |  Feasible: ${result.feasibleLow}`;
     if (result.n90Low !== null) {
         const shareLow = result.feasibleLow > 0 ? ` (${(result.n90Low / result.feasibleLow * 100).toFixed(1)}%)` : '';
         lowLine += `  |  N90: ${result.n90Low}${shareLow}`;
     }
     lines.push(lowLine);
-    let highLine = `# High budget: ${result.budgetHigh}  |  optimal: ${result.optHigh.count} items (value ${result.optHigh.value})  |  Sahni-k: ${result.sahniHigh}  |  Greedy: ${(result.greedyRatioHigh * 100).toFixed(1)}%`;
+
+    let highLine = `# High budget: ${result.budgetHigh}  |  optimal: ${result.optHigh.count} items (value ${result.optHigh.value})  [${expInHigh}E + ${chpInHigh}C]  |  Sahni-k: ${result.sahniHigh}  |  Greedy: ${(result.greedyRatioHigh * 100).toFixed(1)}%`;
     if (result.feasibleHigh !== null) highLine += `  |  Feasible: ${result.feasibleHigh}`;
     if (result.n90High !== null) {
         const shareHigh = result.feasibleHigh > 0 ? ` (${(result.n90High / result.feasibleHigh * 100).toFixed(1)}%)` : '';
         highLine += `  |  N90: ${result.n90High}${shareHigh}`;
     }
     lines.push(highLine);
+
     lines.push('# price,value');
-    result.items.forEach(it => lines.push(`${it.weight},${it.value}${it.premium ? '  # premium' : ''}`));
+    result.items.forEach(it => lines.push(`${it.weight},${it.value}  # ${it.category}`));
     return lines.join('\n');
 }
 
-// Build (or rebuild) item rows in a tbody with highlighting + drag handles + move arrows
+// ============================================================
+// Build item rows with highlighting + drag handles + category badges
+// ============================================================
 function buildItemRows(tbody, result, lowIdSet, highIdSet) {
     tbody.innerHTML = '';
     const count = result.items.length;
@@ -632,17 +760,21 @@ function buildItemRows(tbody, result, lowIdSet, highIdSet) {
         if (inLow && inHigh) cls = 'optimal-both';
         else if (inLow) cls = 'optimal-low';
         else if (inHigh) cls = 'optimal-high';
-        const premiumBadge = item.premium ? '<span class="premium-badge">★</span>' : '';
+
+        const catBadge = item.category === 'expensive'
+            ? '<span class="category-badge expensive">E</span>'
+            : '<span class="category-badge cheap">C</span>';
+
         const tr = document.createElement('tr');
         tr.draggable = true;
         tr.dataset.idx = idx;
         if (cls) tr.className = cls;
-        tr.innerHTML = `<td class="drag-handle">⠿</td><td>${idx + 1}${premiumBadge}</td><td>${item.weight}</td><td>${item.value}</td><td>${(item.value / item.weight).toFixed(2)}</td><td class="move-btns"><button class="move-btn move-up" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''}>▲</button><button class="move-btn move-down" data-idx="${idx}" ${idx === count - 1 ? 'disabled' : ''}>▼</button></td>`;
+        tr.innerHTML = `<td class="drag-handle">⠿</td><td>${idx + 1}${catBadge}</td><td>${item.weight}</td><td>${item.value}</td><td>${(item.value / item.weight).toFixed(2)}</td><td class="move-btns"><button class="move-btn move-up" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''}>▲</button><button class="move-btn move-down" data-idx="${idx}" ${idx === count - 1 ? 'disabled' : ''}>▼</button></td>`;
         tbody.appendChild(tr);
     });
 }
 
-// Shared: reorder item at fromIdx to toIdx in the given instance, rebuild table
+// Reorder item
 function reorderItem(tbody, instanceIdx, fromIdx, toIdx) {
     const result = allResults[instanceIdx];
     if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0 || fromIdx >= result.items.length || toIdx >= result.items.length) return;
@@ -650,7 +782,6 @@ function reorderItem(tbody, instanceIdx, fromIdx, toIdx) {
     const [moved] = result.items.splice(fromIdx, 1);
     result.items.splice(toIdx, 0, moved);
 
-    // Preserve optimal membership by object identity
     const lowItemObjs = new Set(result.optLow.items);
     const highItemObjs = new Set(result.optHigh.items);
 
@@ -669,10 +800,10 @@ function reorderItem(tbody, instanceIdx, fromIdx, toIdx) {
     setupDragAndDrop(tbody, instanceIdx);
 }
 
-// Set up drag-and-drop + arrow button clicks on item table rows
+// Set up drag-and-drop + arrow buttons
 function setupDragAndDrop(tbody, instanceIdx) {
     let dragRow = null;
-    let dropPosition = null; // 'before' or 'after'
+    let dropPosition = null;
 
     tbody.addEventListener('dragstart', (e) => {
         const tr = e.target.closest('tr');
@@ -697,7 +828,6 @@ function setupDragAndDrop(tbody, instanceIdx) {
         const tr = e.target.closest('tr');
         if (!tr || tr === dragRow) return;
 
-        // Determine top half vs bottom half
         const rect = tr.getBoundingClientRect();
         const midY = rect.top + rect.height / 2;
         const isTopHalf = e.clientY < midY;
@@ -726,18 +856,15 @@ function setupDragAndDrop(tbody, instanceIdx) {
         const fromIdx = parseInt(dragRow.dataset.idx);
         let toIdx = parseInt(targetTr.dataset.idx);
 
-        // Adjust target based on drop position
         if (dropPosition === 'after') {
             toIdx = toIdx + (fromIdx < toIdx ? 0 : 1);
         } else {
             toIdx = toIdx - (fromIdx > toIdx ? 0 : 1);
         }
-
         toIdx = Math.max(0, Math.min(toIdx, allResults[instanceIdx].items.length - 1));
         reorderItem(tbody, instanceIdx, fromIdx, toIdx);
     });
 
-    // Arrow button click handlers
     tbody.querySelectorAll('.move-up').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -753,6 +880,10 @@ function setupDragAndDrop(tbody, instanceIdx) {
         });
     });
 }
+
+// ============================================================
+// Render all results
+// ============================================================
 function renderResults() {
     el.resultsContainer.innerHTML = '';
 
@@ -760,18 +891,24 @@ function renderResults() {
         const card = document.createElement('div');
         card.className = 'instance-card';
 
+        const expCount = result.items.filter(it => it.category === 'expensive').length;
+        const chpCount = result.items.filter(it => it.category === 'cheap').length;
+        const expInLow = result.optLow.items.filter(it => it.category === 'expensive').length;
+        const chpInLow = result.optLow.items.filter(it => it.category === 'cheap').length;
+        const expInHigh = result.optHigh.items.filter(it => it.category === 'expensive').length;
+        const chpInHigh = result.optHigh.items.filter(it => it.category === 'cheap').length;
+
         // Header
         const header = document.createElement('div');
         header.className = 'instance-header';
-        const premiumCount = result.items.filter(it => it.premium).length;
-        const premiumTag = premiumCount > 0 ? `<span style="color:#e17055;font-weight:600;">★${premiumCount} premium</span>` : '';
         header.innerHTML = `
             <h3>Instance ${i + 1}</h3>
             <div class="meta">
                 <span>seed: ${result.seed}</span>
-                ${premiumTag}
-                <span class="low-tag">low ${result.budgetLow}: ${result.optLow.count} items, k=${result.sahniLow}, G=${(result.greedyRatioLow * 100).toFixed(0)}%</span>
-                <span class="high-tag">high ${result.budgetHigh}: ${result.optHigh.count} items, k=${result.sahniHigh}, G=${(result.greedyRatioHigh * 100).toFixed(0)}%</span>
+                <span style="color:#e17055;font-weight:600;">${expCount}E</span>
+                <span style="color:#00b894;font-weight:600;">${chpCount}C</span>
+                <span class="low-tag">low ${result.budgetLow}: ${result.optLow.count} items [${expInLow}E+${chpInLow}C], k=${result.sahniLow}, G=${(result.greedyRatioLow * 100).toFixed(0)}%</span>
+                <span class="high-tag">high ${result.budgetHigh}: ${result.optHigh.count} items [${expInHigh}E+${chpInHigh}C], k=${result.sahniHigh}, G=${(result.greedyRatioHigh * 100).toFixed(0)}%</span>
                 <button class="copy-instance-btn" data-index="${i}">Copy</button>
             </div>
         `;
@@ -797,32 +934,35 @@ function renderResults() {
         dualMeta.innerHTML = `
             <div class="panel low">
                 <strong>Low Budget: ${result.budgetLow}</strong>
-                Optimal: ${result.optLow.count} items, value ${result.optLow.value}, price ${result.optLow.weight}, Sahni-k=${result.sahniLow}<br>
-                Greedy Performance: ${(result.greedyRatioLow * 100).toFixed(1)}%${feasibleLowStr}${n90LowStr}<br>
+                Optimal: ${result.optLow.count} items [<span style="color:#e17055">${expInLow}E</span> + <span style="color:#00b894">${chpInLow}C</span>], value ${result.optLow.value}, price ${result.optLow.weight}, Sahni-k=${result.sahniLow}<br>
+                Greedy: ${(result.greedyRatioLow * 100).toFixed(1)}%${feasibleLowStr}${n90LowStr}<br>
                 Items: ${lowIds.join(', ')}
             </div>
             <div class="panel high">
                 <strong>High Budget: ${result.budgetHigh}</strong>
-                Optimal: ${result.optHigh.count} items, value ${result.optHigh.value}, price ${result.optHigh.weight}, Sahni-k=${result.sahniHigh}<br>
-                Greedy Performance: ${(result.greedyRatioHigh * 100).toFixed(1)}%${feasibleHighStr}${n90HighStr}<br>
+                Optimal: ${result.optHigh.count} items [<span style="color:#e17055">${expInHigh}E</span> + <span style="color:#00b894">${chpInHigh}C</span>], value ${result.optHigh.value}, price ${result.optHigh.weight}, Sahni-k=${result.sahniHigh}<br>
+                Greedy: ${(result.greedyRatioHigh * 100).toFixed(1)}%${feasibleHighStr}${n90HighStr}<br>
                 Items: ${highIds.join(', ')}
             </div>
         `;
         body.appendChild(dualMeta);
 
-        // Items table with highlighting
+        // Legend
         const lowIdSet = new Set(result.optLow.items.map(it => it.id));
         const highIdSet = new Set(result.optHigh.items.map(it => it.id));
 
         const legend = document.createElement('div');
         legend.className = 'items-legend';
         legend.innerHTML = `
-            <span><span class="dot low"></span> Low budget optimal</span>
-            <span><span class="dot high"></span> High budget optimal</span>
+            <span><span class="dot low"></span> Low optimal</span>
+            <span><span class="dot high"></span> High optimal</span>
             <span><span class="dot both"></span> Both</span>
+            <span style="margin-left:8px;"><span style="color:#e17055;font-weight:700;">E</span> = expensive</span>
+            <span><span style="color:#00b894;font-weight:700;">C</span> = cheap</span>
         `;
         body.appendChild(legend);
 
+        // Items table
         const table = document.createElement('table');
         table.className = 'instance-items-table';
         table.dataset.instance = i;
@@ -856,6 +996,9 @@ function renderResults() {
     });
 }
 
+// ============================================================
+// Clipboard helpers
+// ============================================================
 function copyToClipboard(text, btn) {
     const orig = btn.textContent;
     function ok() { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = orig; }, 1500); }
@@ -878,11 +1021,14 @@ function fallbackCopy(text) {
     return ok;
 }
 
-// Generate all instances one-by-one with progress
+// ============================================================
+// Generate batch with progress
+// ============================================================
 function generateBatch() {
     const config = getConfig();
 
     // Validations
+    if (config.expCount < 0 || config.expCount > config.nItems) { alert('Expensive count must be between 0 and total items.'); return; }
     if (config.budgetLowMin > config.budgetLowMax) { alert('Low Budget Min must be ≤ Max.'); return; }
     if (config.budgetHighMin > config.budgetHighMax) { alert('High Budget Min must be ≤ Max.'); return; }
     if (config.optLowMin > config.optLowMax) { alert('Low Optimal Items Min must be ≤ Max.'); return; }
@@ -901,7 +1047,6 @@ function generateBatch() {
 
     function nextInstance() {
         if (idx >= total) {
-            // Done
             el.progressFill.style.width = '100%';
             setTimeout(() => { el.progressBar.style.display = 'none'; }, 400);
             el.generateBtn.textContent = 'Generate Batch';
@@ -912,7 +1057,6 @@ function generateBatch() {
 
         el.progressFill.style.width = ((idx / total) * 100) + '%';
 
-        // Each instance gets a different base seed
         const baseSeed = config.seed;
         const instanceSeed = idx === 0 ? baseSeed : baseSeed + '_inst' + idx;
 
@@ -920,7 +1064,6 @@ function generateBatch() {
         allResults.push(result);
         idx++;
 
-        // Use setTimeout to allow UI to update between instances
         setTimeout(nextInstance, 5);
     }
 
@@ -936,10 +1079,14 @@ function copyAll() {
 function downloadJSON() {
     if (allResults.length === 0) return;
     const config = getConfig();
+    const chpCount = config.nItems - config.expCount;
+
     const exportData = {
-        problem: '0/1 knapsack (batch dual budget)',
+        problem: '0/1 knapsack (batch specific dual budget)',
         n_instances: allResults.length,
         n_items: config.nItems,
+        expensive_count: config.expCount,
+        cheap_count: chpCount,
         starting_seed: config.seed,
         budget_low_range: [config.budgetLowMin, config.budgetLowMax],
         budget_high_range: [config.budgetHighMin, config.budgetHighMax],
@@ -949,23 +1096,52 @@ function downloadJSON() {
         target_sahni_k_high: config.sahniKHigh,
         optimal_value_range_low: [config.minOptValLow, config.maxOptValLow],
         optimal_value_range_high: [config.minOptValHigh, config.maxOptValHigh],
-        price_dist: { name: distName(config.weightDist, config.weightInt), params: config.weightParams },
-        value_dist: config.correlation === 'independent' ? { name: distName(config.valueDist, config.valueInt), params: config.valueParams } : null,
-        correlation: { mode: CORRELATION_NAMES[config.correlation] },
+        expensive_items: {
+            price_dist: { name: distName(config.expWeightDist, config.expWeightInt), params: config.expWeightParams },
+            value_dist: config.expCorrelation === 'independent' ? { name: distName(config.expValueDist, config.expValueInt), params: config.expValueParams } : null,
+            correlation: { mode: CORRELATION_NAMES[config.expCorrelation] },
+            target_in_low_optimal: [config.expOptLowMin, config.expOptLowMax],
+            target_in_high_optimal: [config.expOptHighMin, config.expOptHighMax]
+        },
+        cheap_items: {
+            price_dist: { name: distName(config.chpWeightDist, config.chpWeightInt), params: config.chpWeightParams },
+            value_dist: config.chpCorrelation === 'independent' ? { name: distName(config.chpValueDist, config.chpValueInt), params: config.chpValueParams } : null,
+            correlation: { mode: CORRELATION_NAMES[config.chpCorrelation] },
+            target_in_low_optimal: [config.chpOptLowMin, config.chpOptLowMax],
+            target_in_high_optimal: [config.chpOptHighMin, config.chpOptHighMax]
+        },
         ratio_spread: config.ratioSpread,
         integer_ratios: config.integerRatios,
         fraction_ratios: config.fractionRatios,
-        premium_items: { count: config.premiumCount, price: config.premiumPrice, value: config.premiumValue },
-        instances: allResults.map((r, i) => ({
-            instance: i + 1,
-            seed: r.seed,
-            budget_low: r.budgetLow,
-            budget_high: r.budgetHigh,
-            optimal_low: { count: r.optLow.count, value: r.optLow.value, weight: r.optLow.weight, sahni_k: r.sahniLow, greedy_ratio: parseFloat((r.greedyRatioLow * 100).toFixed(1)), feasible: r.feasibleLow, n90: r.n90Low, item_ids: r.optLow.items.map(it => it.id) },
-            optimal_high: { count: r.optHigh.count, value: r.optHigh.value, weight: r.optHigh.weight, sahni_k: r.sahniHigh, greedy_ratio: parseFloat((r.greedyRatioHigh * 100).toFixed(1)), feasible: r.feasibleHigh, n90: r.n90High, item_ids: r.optHigh.items.map(it => it.id) },
-            items: r.items.map(it => ({ id: it.id, price: it.weight, value: it.value, ...(it.premium ? { premium: true } : {}) })),
-            ...(r.warning ? { warning: r.warning } : {})
-        }))
+        instances: allResults.map((r, idx) => {
+            const expInLow = r.optLow.items.filter(it => it.category === 'expensive').length;
+            const chpInLow = r.optLow.items.filter(it => it.category === 'cheap').length;
+            const expInHigh = r.optHigh.items.filter(it => it.category === 'expensive').length;
+            const chpInHigh = r.optHigh.items.filter(it => it.category === 'cheap').length;
+
+            return {
+                instance: idx + 1,
+                seed: r.seed,
+                budget_low: r.budgetLow,
+                budget_high: r.budgetHigh,
+                optimal_low: {
+                    count: r.optLow.count, value: r.optLow.value, weight: r.optLow.weight,
+                    sahni_k: r.sahniLow, greedy_ratio: parseFloat((r.greedyRatioLow * 100).toFixed(1)),
+                    feasible: r.feasibleLow, n90: r.n90Low,
+                    expensive_in_opt: expInLow, cheap_in_opt: chpInLow,
+                    item_ids: r.optLow.items.map(it => it.id)
+                },
+                optimal_high: {
+                    count: r.optHigh.count, value: r.optHigh.value, weight: r.optHigh.weight,
+                    sahni_k: r.sahniHigh, greedy_ratio: parseFloat((r.greedyRatioHigh * 100).toFixed(1)),
+                    feasible: r.feasibleHigh, n90: r.n90High,
+                    expensive_in_opt: expInHigh, cheap_in_opt: chpInHigh,
+                    item_ids: r.optHigh.items.map(it => it.id)
+                },
+                items: r.items.map(it => ({ id: it.id, price: it.weight, value: it.value, category: it.category })),
+                ...(r.warning ? { warning: r.warning } : {})
+            };
+        })
     };
 
     const json = JSON.stringify(exportData, null, 2);
@@ -973,12 +1149,14 @@ function downloadJSON() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `knapsack_batch_${config.seed}_x${allResults.length}.json`;
+    a.download = `knapsack_specific_${config.seed}_x${allResults.length}.json`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
 }
 
+// ============================================================
 // Make integer ratios and fraction ratios mutually exclusive
+// ============================================================
 el.integerRatios.addEventListener('change', () => {
     if (el.integerRatios.checked) el.fractionRatios.checked = false;
 });
@@ -986,15 +1164,44 @@ el.fractionRatios.addEventListener('change', () => {
     if (el.fractionRatios.checked) el.integerRatios.checked = false;
 });
 
+// ============================================================
 // Event listeners
-el.weightDist.addEventListener('change', () => updateDistParams('weight_dist', 'weight_params'));
-el.valueDist.addEventListener('change', () => updateDistParams('value_dist', 'value_params'));
-el.correlation.addEventListener('change', updateCorrelationParams);
+// ============================================================
+
+// Expensive dist toggles
+el.expWeightDist.addEventListener('change', () => updateDistParams('exp_weight_dist', 'exp_weight_params'));
+el.expValueDist.addEventListener('change', () => updateDistParams('exp_value_dist', 'exp_value_params'));
+el.expCorrelation.addEventListener('change', () => {
+    updateCorrelationParams(
+        el.expCorrelation, el.expCorrelationParams,
+        el.expValueDist.closest('.form-group'), el.expValueParams
+    );
+});
+
+// Cheap dist toggles
+el.chpWeightDist.addEventListener('change', () => updateDistParams('chp_weight_dist', 'chp_weight_params'));
+el.chpValueDist.addEventListener('change', () => updateDistParams('chp_value_dist', 'chp_value_params'));
+el.chpCorrelation.addEventListener('change', () => {
+    updateCorrelationParams(
+        el.chpCorrelation, el.chpCorrelationParams,
+        el.chpValueDist.closest('.form-group'), el.chpValueParams
+    );
+});
+
+// Auto-update cheap count
+el.nItems.addEventListener('input', updateCheapCount);
+el.expCount.addEventListener('input', updateCheapCount);
+
+// Main actions
 el.generateBtn.addEventListener('click', generateBatch);
 el.copyAllBtn.addEventListener('click', copyAll);
 el.downloadJsonBtn.addEventListener('click', downloadJSON);
 
-// Init
-updateDistParams('weight_dist', 'weight_params');
-updateDistParams('value_dist', 'value_params');
-updateCorrelationParams();
+// Init — show correct dist param groups
+updateDistParams('exp_weight_dist', 'exp_weight_params');
+updateDistParams('exp_value_dist', 'exp_value_params');
+updateCorrelationParams(el.expCorrelation, el.expCorrelationParams, el.expValueDist.closest('.form-group'), el.expValueParams);
+updateDistParams('chp_weight_dist', 'chp_weight_params');
+updateDistParams('chp_value_dist', 'chp_value_params');
+updateCorrelationParams(el.chpCorrelation, el.chpCorrelationParams, el.chpValueDist.closest('.form-group'), el.chpValueParams);
+updateCheapCount();

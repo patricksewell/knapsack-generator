@@ -96,6 +96,33 @@
         }
         .form-group.compact { min-width: 80px; max-width: 100px; }
         .form-group.compact input[type="number"] { width: 100%; }
+        /* Item table highlighting */
+        .instance-items-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; font-family: 'SF Mono', Consolas, monospace; margin-bottom: 4px; }
+        .instance-items-table th { font-size: 0.72rem; text-transform: uppercase; color: #999; letter-spacing: 0.5px; padding: 4px 8px; text-align: left; border-bottom: 2px solid #e1e8ed; }
+        .instance-items-table td { padding: 4px 8px; border-bottom: 1px solid #f0f0f0; }
+        .instance-items-table tr.optimal-low { background: rgba(52, 152, 219, 0.12); }
+        .instance-items-table tr.optimal-low td { color: #2471a3; }
+        .instance-items-table tr.optimal-high { background: rgba(39, 174, 96, 0.12); }
+        .instance-items-table tr.optimal-high td { color: #1e8449; }
+        .instance-items-table tr.optimal-both { background: rgba(155, 89, 182, 0.15); }
+        .instance-items-table tr.optimal-both td { color: #7d3c98; }
+        .instance-items-table .premium-badge { font-size: 0.68rem; color: #e17055; font-weight: 600; margin-left: 4px; }
+        .instance-items-table .drag-handle { cursor: grab; color: #bbb; font-size: 0.9rem; user-select: none; padding-right: 4px; }
+        .instance-items-table .drag-handle:active { cursor: grabbing; }
+        .instance-items-table tr.dragging { opacity: 0.25; }
+        .instance-items-table tr.drag-over-top td { box-shadow: inset 0 2px 0 0 #3498db; }
+        .instance-items-table tr.drag-over-bottom td { box-shadow: inset 0 -2px 0 0 #3498db; }
+        .instance-items-table tr { transition: background 0.1s; }
+        .instance-items-table .move-btns { white-space: nowrap; }
+        .instance-items-table .move-btn { background: none; border: 1px solid #dce1e3; border-radius: 3px; cursor: pointer; padding: 1px 5px; font-size: 0.72rem; color: #888; line-height: 1; margin: 0 1px; }
+        .instance-items-table .move-btn:hover { background: #ecf0f1; color: #333; }
+        .instance-items-table .move-btn:disabled { opacity: 0.25; cursor: default; background: none; }
+        .items-legend { font-size: 0.72rem; color: #888; margin-bottom: 4px; display: flex; gap: 12px; flex-wrap: wrap; }
+        .items-legend span { display: inline-flex; align-items: center; gap: 4px; }
+        .items-legend .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+        .items-legend .dot.low { background: rgba(52, 152, 219, 0.35); }
+        .items-legend .dot.high { background: rgba(39, 174, 96, 0.35); }
+        .items-legend .dot.both { background: rgba(155, 89, 182, 0.35); }
         @media (max-width: 600px) {
             .dual-meta { grid-template-columns: 1fr; }
             .instance-header .meta { flex-wrap: wrap; gap: 6px; }
@@ -288,6 +315,23 @@
                         <option value="high">High (λ=2.0)</option>
                     </select>
                     <label class="int-checkbox"><input type="checkbox" id="integer_ratios"> integer ratios</label>
+                    <label class="int-checkbox"><input type="checkbox" id="fraction_ratios"> fraction ratios</label>
+                </div>
+            </div>
+
+            <div class="form-row" style="border: 2px solid #e17055; border-radius: 8px; padding: 10px 12px; background: rgba(225,112,85,0.04);">
+                <div class="target-section-label" style="color: #e17055;">Premium Items <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Premium items are expensive, high-value items that appear salient. They are injected at random positions among the regular items. Set count to 0 to disable.</div></span></div>
+                <div class="form-group compact">
+                    <label for="premium_count">Count</label>
+                    <input type="number" id="premium_count" value="0" min="0" max="12">
+                </div>
+                <div class="form-group compact">
+                    <label for="premium_price">Price</label>
+                    <input type="number" id="premium_price" value="20" min="1">
+                </div>
+                <div class="form-group compact">
+                    <label for="premium_value">Value</label>
+                    <input type="number" id="premium_value" value="100" min="1">
                 </div>
             </div>
 
@@ -327,6 +371,10 @@
                 <div class="form-group">
                     <label for="minFeasibleInput">Min feasible combinations <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Reject instances where either budget has fewer than this many feasible item subsets.<br><strong>No limit:</strong> leave empty. Only evaluated when items ≤ 20.</div></span></label>
                     <input type="number" id="minFeasibleInput" placeholder="No limit" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="maxRatioInput">Max V/P ratio <span class="info-icon" tabindex="0">ⓘ<div class="info-tooltip">Reject instances where any <em>regular</em> (non-premium) item has a value/price ratio above this threshold.<br><strong>No limit:</strong> leave empty.</div></span></label>
+                    <input type="number" id="maxRatioInput" placeholder="No limit" min="0" step="0.1">
                 </div>
             </div>
 
